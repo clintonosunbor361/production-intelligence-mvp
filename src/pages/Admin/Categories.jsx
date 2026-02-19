@@ -5,6 +5,7 @@ import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
 import { Modal } from '../../components/UI/Modal';
 import { Input } from '../../components/UI/Input';
+import { CSVImporter } from '../../components/Shared/CSVImporter';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 
 export default function ManageCategories() {
@@ -51,10 +52,26 @@ export default function ManageCategories() {
                     <h1 className="text-2xl font-serif text-maison-primary">Categories</h1>
                     <p className="text-sm text-maison-secondary">Work categories (Sewing, Cutting, etc.)</p>
                 </div>
-                <Button onClick={() => handleOpenModal()}>
-                    <Plus size={16} className="mr-2" />
-                    Add Category
-                </Button>
+                <div className="flex gap-3">
+                    <CSVImporter
+                        onImport={async (data) => {
+                            let count = 0;
+                            setLoading(true);
+                            for (const row of data) {
+                                if (row.Name) {
+                                    await db.createCategory(row.Name);
+                                    count++;
+                                }
+                            }
+                            await loadData();
+                            alert(`Imported ${count} categories.`);
+                        }}
+                    />
+                    <Button onClick={() => handleOpenModal()}>
+                        <Plus size={16} className="mr-2" />
+                        Add Category
+                    </Button>
+                </div>
             </div>
 
             <Card padding="p-0">

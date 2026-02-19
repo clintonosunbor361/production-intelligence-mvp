@@ -57,7 +57,7 @@ export default function PendingVerification() {
                             </TableCell>
                             <TableCell>{task.tailor_name}</TableCell>
                             <TableCell className="font-medium">
-                                ${parseFloat(task.tailor_pay).toFixed(2)}
+                                ₦{parseFloat(task.tailor_pay).toFixed(2)}
                             </TableCell>
                             <TableCell>
                                 <div className="flex gap-2">

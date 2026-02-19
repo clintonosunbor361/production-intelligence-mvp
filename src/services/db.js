@@ -52,6 +52,100 @@ class MaisonDB {
         return this.data.TAILORS;
     }
 
+    // --- Master Data Setters (for CSV Import / Master Data Management) ---
+
+    async createProductType(name) {
+        await delay(200);
+        const exists = this.data.PRODUCT_TYPES.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (exists) return exists;
+
+        const newPT = { id: `pt_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, name, active: true };
+        const updatedData = { ...this.data, PRODUCT_TYPES: [...this.data.PRODUCT_TYPES, newPT] };
+        this._saveData(updatedData);
+        return newPT;
+    }
+
+    async createCategory(name) {
+        await delay(200);
+        const exists = this.data.CATEGORIES.find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (exists) return exists;
+
+        const newCat = { id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, name, active: true };
+        const updatedData = { ...this.data, CATEGORIES: [...this.data.CATEGORIES, newCat] };
+        this._saveData(updatedData);
+        return newCat;
+    }
+
+    async createTailor(name, percentage) {
+        await delay(200);
+        // Clean percentage string if needed (e.g. "30" -> 0.3, "0.3" -> 0.3, "30%" -> 0.3)
+        let pct = parseFloat(percentage);
+        if (pct > 1) pct = pct / 100; // Assume whole number like 30 means 30%
+
+        const newTailor = {
+            id: `t_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            name,
+            percentage: pct,
+            active: true
+        };
+        const updatedData = { ...this.data, TAILORS: [...this.data.TAILORS, newTailor] };
+        this._saveData(updatedData);
+        return newTailor;
+    }
+
+    async createTaskAndRate(productName, categoryName, taskName, baseFee) {
+        await delay(200);
+
+        let pt = this.data.PRODUCT_TYPES.find(p => p.name.toLowerCase() === productName.toLowerCase());
+        if (!pt) pt = await this.createProductType(productName); // Lazy create dependencies? Or fail. Let's lazy create for smoother UX.
+
+        let cat = this.data.CATEGORIES.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+        if (!cat) cat = await this.createCategory(categoryName);
+
+        // Check if task type exists
+        let tt = this.data.TASK_TYPES.find(t =>
+            t.product_type_id === pt.id &&
+            t.category_id === cat.id &&
+            t.name.toLowerCase() === taskName.toLowerCase()
+        );
+
+        if (!tt) {
+            tt = {
+                id: `tt_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                product_type_id: pt.id,
+                category_id: cat.id,
+                name: taskName,
+                active: true
+            };
+            this.data.TASK_TYPES.push(tt); // Modifying in place for this complex op, saved at end
+        }
+
+        // Add/Update Rate
+        const existingRateIndex = this.data.RATE_CARD.findIndex(r =>
+            r.product_type_id === pt.id &&
+            r.category_id === cat.id &&
+            r.task_type_id === tt.id
+        );
+
+        const newRate = {
+            id: `rc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            product_type_id: pt.id,
+            category_id: cat.id,
+            task_type_id: tt.id,
+            base_fee: parseFloat(baseFee)
+        };
+
+        if (existingRateIndex >= 0) {
+            this.data.RATE_CARD[existingRateIndex] = newRate;
+        } else {
+            this.data.RATE_CARD.push(newRate);
+        }
+
+        const updatedData = { ...this.data }; // TASK_TYPES and RATE_CARD were mutated in place on this.data refs
+        this._saveData(updatedData);
+        return newRate;
+    }
+
     // --- Operational Data ---
 
     // ITEMS
@@ -180,7 +274,7 @@ class MaisonDB {
 
         const base_fee_snapshot = rateCard.base_fee;
         const tailor_percentage_snapshot = tailor.percentage;
-        const tailor_pay = base_fee_snapshot * tailor_percentage_snapshot;
+        const tailor_pay = base_fee_snapshot * (1 + tailor_percentage_snapshot);
 
         const newTask = {
             id: crypto.randomUUID(),

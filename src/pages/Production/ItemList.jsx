@@ -3,6 +3,7 @@ import { db } from '../../services/db';
 import { Card } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
+import { CSVImporter } from '../../components/Shared/CSVImporter';
 import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -40,10 +41,51 @@ export default function ItemList() {
                     <h1 className="text-2xl font-serif text-maison-primary">Production Items</h1>
                     <p className="text-sm text-maison-secondary">Track all physical items in the pipeline</p>
                 </div>
-                <Button onClick={() => navigate('/production/create')}>
-                    <Plus size={16} className="mr-2" />
-                    Create Item
-                </Button>
+                <div className="flex gap-3">
+                    <CSVImporter
+                        onImport={async (data) => {
+                            let count = 0;
+                            // Pre-fetch keys needed for matching
+                            const productTypes = await db.getProductTypes();
+
+                            setLoading(true);
+                            for (const row of data) {
+                                // Ticket ID, Customer, Product Type, Quantity, Notes
+                                const ticket_id = row['Ticket ID'];
+                                const customer_name = row.Customer;
+                                const productTypeName = row['Product Type'];
+                                const quantity = parseInt(row.Quantity) || 1;
+                                const notes = row.Notes || '';
+
+                                if (ticket_id && customer_name && productTypeName) {
+                                    let pt = productTypes.find(p => p.name.toLowerCase() === productTypeName.toLowerCase());
+                                    // If not found, ignore or maybe create? Plan said ignore/flag. 
+                                    // Let's create PT if missing for better UX? Or just default to first?
+                                    // Let's create it.
+                                    if (!pt) {
+                                        pt = await db.createProductType(productTypeName);
+                                    }
+
+                                    await db.createItem({
+                                        ticket_id,
+                                        customer_name,
+                                        product_type_id: pt.id,
+                                        quantity,
+                                        notes,
+                                        created_by_role: 'production' // default
+                                    });
+                                    count++;
+                                }
+                            }
+                            await loadItems();
+                            alert(`Imported ${count} item batches.`);
+                        }}
+                    />
+                    <Button onClick={() => navigate('/production/create')}>
+                        <Plus size={16} className="mr-2" />
+                        Create Item
+                    </Button>
+                </div>
             </div>
 
             <Card padding="p-0">

@@ -5,6 +5,7 @@ import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
 import { Modal } from '../../components/UI/Modal';
 import { Input } from '../../components/UI/Input';
+import { CSVImporter } from '../../components/Shared/CSVImporter';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 
 export default function ManageTaskTypes() {
@@ -97,10 +98,32 @@ export default function ManageTaskTypes() {
                     <h1 className="text-2xl font-serif text-maison-primary">Task Rates</h1>
                     <p className="text-sm text-maison-secondary">Configure tasks and base fees per product/category</p>
                 </div>
-                <Button onClick={() => handleOpenModal()}>
-                    <Plus size={16} className="mr-2" />
-                    Add Task Type
-                </Button>
+                <div className="flex gap-3">
+                    <CSVImporter
+                        onImport={async (data) => {
+                            let count = 0;
+                            setLoading(true);
+                            for (const row of data) {
+                                // Product, Category, Task Name, Base Fee
+                                const productName = row.Product;
+                                const categoryName = row.Category;
+                                const taskName = row['Task Name'];
+                                const baseFee = row['Base Fee'];
+
+                                if (productName && categoryName && taskName && baseFee) {
+                                    await db.createTaskAndRate(productName, categoryName, taskName, baseFee);
+                                    count++;
+                                }
+                            }
+                            await loadData();
+                            alert(`Imported ${count} task rates.`);
+                        }}
+                    />
+                    <Button onClick={() => handleOpenModal()}>
+                        <Plus size={16} className="mr-2" />
+                        Add Task Type
+                    </Button>
+                </div>
             </div>
 
             <Card padding="p-0">
@@ -110,7 +133,7 @@ export default function ManageTaskTypes() {
                             <TableCell>{item.product_name}</TableCell>
                             <TableCell>{item.category_name}</TableCell>
                             <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>${parseFloat(item.base_fee).toFixed(2)}</TableCell>
+                            <TableCell>₦{parseFloat(item.base_fee).toFixed(2)}</TableCell>
                             <TableCell>
                                 <Badge variant={item.active ? 'success' : 'neutral'}>
                                     {item.active ? 'Active' : 'Inactive'}
@@ -174,7 +197,7 @@ export default function ManageTaskTypes() {
                     />
 
                     <Input
-                        label="Base Fee ($)"
+                        label="Base Fee (₦)"
                         type="number"
                         value={formData.base_fee}
                         onChange={(e) => setFormData({ ...formData, base_fee: e.target.value })}

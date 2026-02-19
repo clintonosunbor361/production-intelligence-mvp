@@ -97,7 +97,7 @@ export default function ManageItemTasks() {
     const selectedTailor = tailors.find(t => t.id === newTask.tailor_id);
 
     const calculatedPay = (selectedRate && selectedTailor)
-        ? (selectedRate.base_fee * selectedTailor.percentage).toFixed(2)
+        ? (selectedRate.base_fee * (1 + selectedTailor.percentage)).toFixed(2)
         : '0.00';
 
 
@@ -156,7 +156,7 @@ export default function ManageItemTasks() {
                             <TableCell>{task.category_name}</TableCell>
                             <TableCell className="font-medium">{task.task_type_name}</TableCell>
                             <TableCell>{task.tailor_name}</TableCell>
-                            <TableCell>${parseFloat(task.tailor_pay).toFixed(2)}</TableCell>
+                            <TableCell>₦{parseFloat(task.tailor_pay).toFixed(2)}</TableCell>
                             <TableCell>
                                 <Badge variant={task.verification_status === 'Verified' ? 'success' : task.verification_status === 'Rejected' ? 'danger' : 'warning'}>
                                     {task.verification_status}
@@ -224,7 +224,7 @@ export default function ManageItemTasks() {
                         >
                             <option value="">Select Tailor...</option>
                             {tailors.filter(t => t.active).map(t => (
-                                <option key={t.id} value={t.id}>{t.name} ({Math.round(t.percentage * 100)}%)</option>
+                                <option key={t.id} value={t.id}>{t.name} (Bonus: +{Math.round(t.percentage * 100)}%)</option>
                             ))}
                         </select>
                     </div>
@@ -234,18 +234,18 @@ export default function ManageItemTasks() {
                         <div className="flex justify-between text-sm mb-1">
                             <span className="text-gray-500">Base Fee:</span>
                             <span className="font-medium">
-                                ${selectedRate ? selectedRate.base_fee.toFixed(2) : '-'}
+                                ₦{selectedRate ? selectedRate.base_fee.toFixed(2) : '-'}
                             </span>
                         </div>
                         <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-500">Tailor %:</span>
+                            <span className="text-gray-500">Bonus:</span>
                             <span className="font-medium">
-                                {selectedTailor ? `${(selectedTailor.percentage * 100).toFixed(0)}%` : '-'}
+                                {selectedTailor ? `+${(selectedTailor.percentage * 100).toFixed(0)}%` : '-'}
                             </span>
                         </div>
                         <div className="flex justify-between text-sm font-bold text-maison-primary pt-2 border-t border-gray-200 mt-2">
                             <span>Total Pay:</span>
-                            <span>${calculatedPay}</span>
+                            <span>₦{calculatedPay}</span>
                         </div>
                     </div>
 

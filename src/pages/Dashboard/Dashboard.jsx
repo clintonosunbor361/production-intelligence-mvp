@@ -102,12 +102,12 @@ export default function Dashboard() {
                 <Card className="relative overflow-hidden">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-2 bg-gray-50 rounded-md text-maison-secondary">
-                            <span className="font-serif font-bold text-lg leading-none">$</span>
+                            <span className="font-serif font-bold text-lg leading-none">₦</span>
                         </div>
                     </div>
                     <p className="text-sm font-medium text-gray-500">Tailor Pay</p>
                     <div className="flex items-end gap-3 mt-1">
-                        <h3 className="text-3xl font-serif text-maison-primary">${stats.totalRevenue.toLocaleString()}</h3>
+                        <h3 className="text-3xl font-serif text-maison-primary">₦{stats.totalRevenue.toLocaleString()}</h3>
                     </div>
                     <p className="text-xs text-gray-400 mt-2">Verified to date</p>
                 </Card>

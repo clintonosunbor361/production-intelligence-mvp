@@ -5,6 +5,7 @@ import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
 import { Modal } from '../../components/UI/Modal';
 import { Input } from '../../components/UI/Input';
+import { CSVImporter } from '../../components/Shared/CSVImporter';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 
 export default function ManageTailors() {
@@ -59,18 +60,34 @@ export default function ManageTailors() {
                     <h1 className="text-2xl font-serif text-maison-primary">Tailors</h1>
                     <p className="text-sm text-maison-secondary">Manage atelier staff and commission rates</p>
                 </div>
-                <Button onClick={() => handleOpenModal()}>
-                    <Plus size={16} className="mr-2" />
-                    Add Tailor
-                </Button>
+                <div className="flex gap-3">
+                    <CSVImporter
+                        onImport={async (data) => {
+                            let count = 0;
+                            setLoading(true);
+                            for (const row of data) {
+                                if (row.Name && row['Bonus %']) {
+                                    await db.createTailor(row.Name, row['Bonus %']);
+                                    count++;
+                                }
+                            }
+                            await loadData();
+                            alert(`Imported ${count} tailors.`);
+                        }}
+                    />
+                    <Button onClick={() => handleOpenModal()}>
+                        <Plus size={16} className="mr-2" />
+                        Add Tailor
+                    </Button>
+                </div>
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Name', 'Commission %', 'Status', 'Actions']}>
+                <Table headers={['Name', 'Bonus %', 'Status', 'Actions']}>
                     {tailors.map((tailor) => (
                         <TableRow key={tailor.id}>
                             <TableCell className="font-medium">{tailor.name}</TableCell>
-                            <TableCell>{(tailor.percentage * 100).toFixed(0)}%</TableCell>
+                            <TableCell>+{(tailor.percentage * 100).toFixed(0)}%</TableCell>
                             <TableCell>
                                 <Badge variant={tailor.active ? 'success' : 'neutral'}>
                                     {tailor.active ? 'Active' : 'Inactive'}
@@ -116,7 +133,7 @@ export default function ManageTailors() {
                         required
                     />
                     <Input
-                        label="Commission Percentage"
+                        label="Bonus Percentage (above Base Fee)"
                         type="number"
                         value={formData.percentage}
                         onChange={(e) => setFormData({ ...formData, percentage: e.target.value })}
