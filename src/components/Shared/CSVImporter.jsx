@@ -19,20 +19,38 @@ export function CSVImporter({ onImport, label = "Import CSV", variant = "seconda
                 return;
             }
 
-            const headers = rows[0].split(',').map(h => h.trim());
+            // Better CSV parsing to handle quoted commas
+            const parseCSVRow = (str) => {
+                const result = [];
+                let insideQuotes = false;
+                let currentVal = '';
+                for (let i = 0; i < str.length; i++) {
+                    const char = str[i];
+                    if (char === '"') {
+                        insideQuotes = !insideQuotes;
+                    } else if (char === ',' && !insideQuotes) {
+                        result.push(currentVal.trim());
+                        currentVal = '';
+                    } else {
+                        currentVal += char;
+                    }
+                }
+                result.push(currentVal.trim());
+                return result;
+            };
+
+            const headers = parseCSVRow(rows[0]);
             const data = rows.slice(1).map(row => {
-                const values = row.split(',').map(v => v.trim());
-                // Simple zip 
+                const values = parseCSVRow(row);
                 const obj = {};
                 headers.forEach((h, i) => {
-                    obj[h] = values[i];
+                    obj[h] = values[i] || ''; // Handle missing values gracefully
                 });
                 return obj;
             });
 
             onImport(data);
 
-            // Reset input
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }

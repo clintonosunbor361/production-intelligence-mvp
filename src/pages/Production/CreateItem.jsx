@@ -4,7 +4,7 @@ import { useAuth, ROLES } from '../../context/AuthContext';
 import { Card } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function CreateItem() {
@@ -13,36 +13,57 @@ export default function CreateItem() {
     const [productTypes, setProductTypes] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    const [formData, setFormData] = useState({
+    const [ticketData, setTicketData] = useState({
         ticket_id: '',
         customer_name: '',
-        product_type_id: '',
-        quantity: 1,
         notes: ''
     });
 
-    useEffect(() => {
-        // Check permission
-        if (user && user.role !== ROLES.PRODUCTION && user.role !== ROLES.ADMIN) {
-            // Ideally redirect or show distinct message, but for MVP just letting them see it
-        }
+    const [items, setItems] = useState([
+        { id: Date.now(), product_type_id: '', quantity: 1 }
+    ]);
 
+    useEffect(() => {
         db.getProductTypes().then(setProductTypes);
     }, [user]);
 
+    const handleAddItem = () => {
+        setItems([...items, { id: Date.now(), product_type_id: '', quantity: 1 }]);
+    };
+
+    const handleRemoveItem = (id) => {
+        if (items.length > 1) {
+            setItems(items.filter(item => item.id !== id));
+        }
+    };
+
+    const handleItemChange = (id, field, value) => {
+        setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.product_type_id) {
-            alert("Please select a product type");
+
+        // Validation
+        const validItems = items.filter(i => i.product_type_id);
+        if (validItems.length === 0) {
+            alert("Please select at least one product type");
             return;
         }
 
         setLoading(true);
         try {
-            await db.createItem({
-                ...formData,
-                created_by_role: user?.role || 'unknown'
-            });
+            // Create items sequentially to ensure DB updates correctly
+            for (const item of validItems) {
+                await db.createItem({
+                    ticket_id: ticketData.ticket_id,
+                    customer_name: ticketData.customer_name,
+                    notes: ticketData.notes,
+                    product_type_id: item.product_type_id,
+                    quantity: item.quantity,
+                    created_by_role: user?.role || 'unknown'
+                });
+            }
             navigate('/production'); // Go back to list
         } catch (err) {
             console.error(err);
@@ -63,58 +84,88 @@ export default function CreateItem() {
 
             <Card>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <Input
-                        label="Ticket ID"
-                        placeholder="e.g. TCK-9021"
-                        value={formData.ticket_id}
-                        onChange={e => setFormData({ ...formData, ticket_id: e.target.value })}
-                        required
-                    />
-
-                    <Input
-                        label="Customer Name"
-                        placeholder="e.g. Client Name"
-                        value={formData.customer_name}
-                        onChange={e => setFormData({ ...formData, customer_name: e.target.value })}
-                        required
-                    />
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">Product Type</label>
-                            <select
-                                className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
-                                value={formData.product_type_id}
-                                onChange={e => setFormData({ ...formData, product_type_id: e.target.value })}
-                                required
-                            >
-                                <option value="">Select Type...</option>
-                                {productTypes.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <Input
+                            label="Ticket ID"
+                            placeholder="e.g. TCK-9021"
+                            value={ticketData.ticket_id}
+                            onChange={e => setTicketData({ ...ticketData, ticket_id: e.target.value })}
+                            required
+                        />
 
                         <Input
-                            label="Quantity"
-                            type="number"
-                            min="1"
-                            max="50"
-                            value={formData.quantity}
-                            onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                            label="Customer Name"
+                            placeholder="e.g. Client Name"
+                            value={ticketData.customer_name}
+                            onChange={e => setTicketData({ ...ticketData, customer_name: e.target.value })}
                             required
                         />
                     </div>
 
-                    <Input
-                        label="Notes (Optional)"
-                        value={formData.notes}
-                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                    />
+                    <div className="border-t border-gray-100 pt-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-medium text-maison-primary">Products</h2>
+                            <Button type="button" variant="secondary" size="sm" onClick={handleAddItem}>
+                                <Plus size={16} className="mr-2" /> Add Product
+                            </Button>
+                        </div>
 
-                    <div className="pt-4 flex justify-end">
+                        <div className="space-y-4">
+                            {items.map((item, index) => (
+                                <div key={item.id} className="flex items-end gap-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Product Type</label>
+                                        <select
+                                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
+                                            value={item.product_type_id}
+                                            onChange={e => handleItemChange(item.id, 'product_type_id', e.target.value)}
+                                            required
+                                        >
+                                            <option value="">Select Type...</option>
+                                            {productTypes.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="w-24">
+                                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Qty</label>
+                                        <input
+                                            type="number"
+                                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
+                                            min="1"
+                                            max="50"
+                                            value={item.quantity}
+                                            onChange={e => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 1)}
+                                            required
+                                        />
+                                    </div>
+
+                                    {items.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveItem(item.id)}
+                                            className="p-2.5 text-gray-400 hover:text-red-500 transition-colors bg-white rounded-lg border border-gray-200 hover:border-red-200 shadow-sm mb-px"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-6">
+                        <Input
+                            label="Master Notes (Optional, applies to all items in this ticket)"
+                            value={ticketData.notes}
+                            onChange={e => setTicketData({ ...ticketData, notes: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
                         <Button type="submit" isLoading={loading}>
-                            Create Items
+                            Create {items.length} {items.length === 1 ? 'Product' : 'Products'}
                         </Button>
                     </div>
                 </form>

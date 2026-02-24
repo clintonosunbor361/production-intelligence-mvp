@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-export function Modal({ isOpen, onClose, title, children }) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }) {
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape') onClose();
@@ -20,7 +20,7 @@ export function Modal({ isOpen, onClose, title, children }) {
                 onClick={onClose}
             />
 
-            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden transform transition-all border border-gray-100">
+            <div className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth} overflow-hidden transform transition-all border border-gray-100`}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                     <h3 className="text-lg font-serif font-medium text-maison-primary">{title}</h3>
                     <button

@@ -3,15 +3,18 @@ import { db } from '../../services/db';
 import { Card } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
+import { Modal } from '../../components/UI/Modal';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Filter, ChevronRight } from 'lucide-react';
+import ManageItemTasks from './ManageItemTasks';
 
 export default function QCQueue() {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, new, received_attention
+    const [selectedItemId, setSelectedItemId] = useState(null);
 
     useEffect(() => {
         loadItems();
@@ -64,10 +67,11 @@ export default function QCQueue() {
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Item Key', 'Product', 'Status', 'Assigned Date', 'Action']}>
+                <Table headers={['Item Key', 'Customer Name', 'Product Type', 'Status', 'Assigned Date', 'Action']}>
                     {filteredItems.map((item) => (
-                        <TableRow key={item.id} onClick={() => navigate(`/qc/item/${item.id}`)}>
+                        <TableRow key={item.id} onClick={() => setSelectedItemId(item.id)} className="cursor-pointer">
                             <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
+                            <TableCell className="font-medium">{item.customer_name}</TableCell>
                             <TableCell>{item.product_type_name}</TableCell>
                             <TableCell>
                                 <div className="flex gap-2">
@@ -87,13 +91,33 @@ export default function QCQueue() {
                     ))}
                     {filteredItems.length === 0 && !loading && (
                         <tr>
-                            <td colSpan="5" className="px-6 py-8 text-center text-gray-500 text-sm">
+                            <td colSpan="6" className="px-6 py-8 text-center text-gray-500 text-sm">
                                 No items match the filter.
                             </td>
                         </tr>
                     )}
                 </Table>
             </Card>
+
+            <Modal
+                isOpen={!!selectedItemId}
+                onClose={() => {
+                    setSelectedItemId(null);
+                    loadItems(); // refresh queue status immediately
+                }}
+                title="Manage Task Assignment"
+                maxWidth="max-w-4xl"
+            >
+                {selectedItemId && (
+                    <ManageItemTasks
+                        itemId={selectedItemId}
+                        onClose={() => {
+                            setSelectedItemId(null);
+                            loadItems();
+                        }}
+                    />
+                )}
+            </Modal>
         </div>
     );
 }

@@ -52,6 +52,11 @@ class MaisonDB {
         return this.data.TAILORS;
     }
 
+    async getTailorSpecialPay(tailorId) {
+        await delay(200);
+        return (this.data.TAILOR_SPECIAL_PAY || []).filter(tsp => tsp.tailor_id === tailorId);
+    }
+
     // --- Master Data Setters (for CSV Import / Master Data Management) ---
 
     async createProductType(name) {
@@ -76,21 +81,83 @@ class MaisonDB {
         return newCat;
     }
 
-    async createTailor(name, percentage) {
+    async createTailor(tailorData) {
         await delay(200);
-        // Clean percentage string if needed (e.g. "30" -> 0.3, "0.3" -> 0.3, "30%" -> 0.3)
-        let pct = parseFloat(percentage);
-        if (pct > 1) pct = pct / 100; // Assume whole number like 30 means 30%
+
+        let base_fee_pct = tailorData.base_fee_pct !== undefined ? parseFloat(tailorData.base_fee_pct) : parseFloat(tailorData.percentage || 0);
+        if (base_fee_pct > 1) base_fee_pct = base_fee_pct / 100;
+
+        let weekly_bonus_pct = parseFloat(tailorData.weekly_bonus_pct || 0);
+        if (weekly_bonus_pct > 1) weekly_bonus_pct = weekly_bonus_pct / 100;
 
         const newTailor = {
             id: `t_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            name,
-            percentage: pct,
-            active: true
+            name: tailorData.name,
+            department: tailorData.department || 'OTHER',
+            base_fee_pct,
+            weekly_bonus_pct,
+            active: tailorData.active !== undefined ? tailorData.active : true,
+            percentage: base_fee_pct // fallback for very old code
         };
         const updatedData = { ...this.data, TAILORS: [...this.data.TAILORS, newTailor] };
         this._saveData(updatedData);
         return newTailor;
+    }
+
+    async updateTailor(id, updates) {
+        await delay(200);
+
+        // Clean percentages if they are being updated
+        let cleanUpdates = { ...updates };
+        if (cleanUpdates.base_fee_pct !== undefined) {
+            let pct = parseFloat(cleanUpdates.base_fee_pct);
+            if (pct > 1) pct = pct / 100;
+            cleanUpdates.base_fee_pct = pct;
+            cleanUpdates.percentage = pct; // sync legacy field
+        }
+        if (cleanUpdates.weekly_bonus_pct !== undefined) {
+            let pct = parseFloat(cleanUpdates.weekly_bonus_pct);
+            if (pct > 1) pct = pct / 100;
+            cleanUpdates.weekly_bonus_pct = pct;
+        }
+
+        const updatedTailors = this.data.TAILORS.map(t =>
+            t.id === id ? { ...t, ...cleanUpdates } : t
+        );
+        this._saveData({ ...this.data, TAILORS: updatedTailors });
+        return updatedTailors.find(t => t.id === id);
+    }
+
+    async saveTailorSpecialPay(tailor_id, task_type_id, uplift_pct) {
+        await delay(100);
+        let specialPays = this.data.TAILOR_SPECIAL_PAY || [];
+
+        let cleanUplift = uplift_pct !== null && uplift_pct !== '' ? parseFloat(uplift_pct) : null;
+        if (cleanUplift !== null && cleanUplift > 1) cleanUplift = cleanUplift / 100;
+
+        const existingIndex = specialPays.findIndex(sp => sp.tailor_id === tailor_id && sp.task_type_id === task_type_id);
+
+        const newRecord = {
+            id: existingIndex >= 0 ? specialPays[existingIndex].id : `tsp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            tailor_id,
+            task_type_id,
+            uplift_pct: cleanUplift
+        };
+
+        if (existingIndex >= 0) {
+            specialPays[existingIndex] = newRecord;
+        } else {
+            specialPays.push(newRecord);
+        }
+
+        this._saveData({ ...this.data, TAILOR_SPECIAL_PAY: specialPays });
+        return newRecord;
+    }
+
+    async removeTailorSpecialPay(id) {
+        await delay(100);
+        const specialPays = (this.data.TAILOR_SPECIAL_PAY || []).filter(sp => sp.id !== id);
+        this._saveData({ ...this.data, TAILOR_SPECIAL_PAY: specialPays });
     }
 
     async createTaskAndRate(productName, categoryName, taskName, baseFee) {
@@ -222,6 +289,19 @@ class MaisonDB {
         return updatedItems.find(i => i.id === itemId);
     }
 
+    async deleteItem(itemId) {
+        await delay(200);
+        const filteredItems = this.data.items.filter(i => i.id !== itemId);
+        const filteredTasks = this.data.tasks.filter(t => t.item_id !== itemId);
+
+        this._saveData({
+            ...this.data,
+            items: filteredItems,
+            tasks: filteredTasks
+        });
+        return true;
+    }
+
     // TASKS
     async getTasksByItemId(itemId) {
         await delay(200);
@@ -245,13 +325,23 @@ class MaisonDB {
             const tt = this.data.TASK_TYPES.find(t => t.id === task.task_type_id);
             const pt = this.data.PRODUCT_TYPES.find(p => p.id === item?.product_type_id);
 
+            // Backward compatibility for task_pay calculation if missing
+            let task_pay = task.task_pay;
+            if (task_pay === undefined) {
+                const base_fee = task.base_fee_snapshot !== undefined ? task.base_fee_snapshot : (this.data.RATE_CARD.find(r => r.product_type_id === item?.product_type_id && r.category_id === task.category_id && r.task_type_id === task.task_type_id)?.base_fee || 0);
+                const uplift = task.uplift_pct_snapshot !== undefined ? task.uplift_pct_snapshot : (tailor?.base_fee_pct ?? tailor?.percentage ?? 0);
+                task_pay = base_fee * (1 + uplift);
+            }
+
             return {
                 ...task,
                 item_key: item?.item_key,
+                customer_name: item?.customer_name,
                 tailor_name: tailor?.name,
                 category_name: cat?.name,
                 task_type_name: tt?.name,
-                product_type_name: pt?.name
+                product_type_name: pt?.name,
+                task_pay // Computed or actual snapshot
             };
         });
     }
@@ -271,17 +361,28 @@ class MaisonDB {
         }
 
         const tailor = this.data.TAILORS.find(t => t.id === taskData.tailor_id);
+        const specialPays = this.data.TAILOR_SPECIAL_PAY || [];
+
+        // Check for special pay override
+        const specialPay = specialPays.find(sp => sp.tailor_id === taskData.tailor_id && sp.task_type_id === taskData.task_type_id);
+
+        let uplift_used = tailor.base_fee_pct !== undefined ? tailor.base_fee_pct : tailor.percentage;
+        if (specialPay && specialPay.uplift_pct !== null) {
+            uplift_used = specialPay.uplift_pct;
+        }
 
         const base_fee_snapshot = rateCard.base_fee;
-        const tailor_percentage_snapshot = tailor.percentage;
-        const tailor_pay = base_fee_snapshot * (1 + tailor_percentage_snapshot);
+        const uplift_pct_snapshot = uplift_used;
+        const task_pay = base_fee_snapshot * (1 + uplift_used);
 
         const newTask = {
             id: crypto.randomUUID(),
             ...taskData,
             base_fee_snapshot,
-            tailor_percentage_snapshot,
-            tailor_pay,
+            uplift_pct_snapshot,
+            tailor_percentage_snapshot: uplift_pct_snapshot, // legacy fallback safety
+            task_pay,
+            tailor_pay: task_pay, // legacy fallback safety
             verification_status: 'Pending',
             verified_by_role: null,
             verified_at: null,
@@ -294,15 +395,19 @@ class MaisonDB {
         };
         this._saveData(updatedData);
 
-        // Clear needs_qc_attention on item if it was set
-        // (Though usually task creation happens before receipt, IF item was received empty, adding a task should clear the flag? 
-        // Requirement said: "Only if Item has 0 tasks". Now it has 1. So yes.)
+        // Update Item status to "Assigned by QC" and clear needs_qc_attention
         if (taskData.item_id) {
-            const item = this.data.items.find(i => i.id === taskData.item_id);
-            if (item && item.needs_qc_attention) {
-                const updatedItems = this.data.items.map(i => i.id === item.id ? { ...i, needs_qc_attention: false } : i);
-                this._saveData({ ...updatedData, items: updatedItems });
-            }
+            const updatedItems = this.data.items.map(i => {
+                if (i.id === taskData.item_id) {
+                    return {
+                        ...i,
+                        status: 'Assigned by QC',
+                        needs_qc_attention: false
+                    };
+                }
+                return i;
+            });
+            this._saveData({ ...updatedData, items: updatedItems });
         }
 
         return newTask;
@@ -323,6 +428,43 @@ class MaisonDB {
         });
         this._saveData({ ...this.data, tasks: updatedTasks });
         return updatedTasks.find(t => t.id === taskId);
+    }
+
+    // WEEKLY PAYROLL REPORTING (MVP)
+    async getWeeklyPayroll() {
+        await delay(200);
+
+        // In a real app we'd filter by a date range. For MVP, we'll just sum all Approved tasks.
+        const verifiedTasks = this.data.tasks.filter(t => t.verification_status === 'Approved' || t.verification_status === 'Verified');
+        const tailorsCount = this.data.TAILORS;
+
+        const payrollSummary = tailorsCount.map(tailor => {
+            const tailorTasks = verifiedTasks.filter(t => t.tailor_id === tailor.id);
+            const weekly_verified_total = tailorTasks.reduce((sum, t) => {
+                let pay = t.task_pay;
+                // backward compat for old tasks
+                if (pay === undefined && t.tailor_pay !== undefined) pay = t.tailor_pay;
+                if (pay === undefined) pay = 0;
+                return sum + pay;
+            }, 0);
+
+            const bonusPct = tailor.weekly_bonus_pct || 0;
+            const weekly_bonus_amount = weekly_verified_total * bonusPct;
+            const weekly_total_pay = weekly_verified_total + weekly_bonus_amount;
+
+            return {
+                tailor_id: tailor.id,
+                tailor_name: tailor.name,
+                department: tailor.department,
+                weekly_verified_total,
+                weekly_bonus_pct: bonusPct,
+                weekly_bonus_amount,
+                weekly_total_pay,
+                task_count: tailorTasks.length
+            };
+        });
+
+        return payrollSummary;
     }
 
     // Reset DB (dev tool)

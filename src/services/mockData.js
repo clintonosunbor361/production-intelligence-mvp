@@ -28,10 +28,16 @@ export const SEED_DATA = {
         { id: 'rc5', product_type_id: 'pt1', category_id: 'cat5', task_type_id: 'tt5', base_fee: 20.00 },
     ],
     TAILORS: [
-        { id: 't1', name: 'Elena Rossi', percentage: 0.30, active: true },
-        { id: 't2', name: 'Marco Vitti', percentage: 0.35, active: true }, // Senior
-        { id: 't3', name: 'Sarah Jin', percentage: 0.30, active: true },
-        { id: 't4', name: 'Ahmed K.', percentage: 0.25, active: true }, // Junior
+        { id: 't1', name: 'Elena Rossi', department: 'SUIT', base_fee_pct: 0.30, weekly_bonus_pct: 0.05, active: true, percentage: 0.30 }, // keeping percentage for backwards compat testing
+        { id: 't2', name: 'Marco Vitti', department: 'CUTTER', base_fee_pct: 0.35, weekly_bonus_pct: 0.10, active: true }, // Senior
+        { id: 't3', name: 'Sarah Jin', department: 'PANT', base_fee_pct: 0.30, weekly_bonus_pct: 0.05, active: true },
+        { id: 't4', name: 'Ahmed K.', department: 'SHIRT', base_fee_pct: 0.25, weekly_bonus_pct: 0.02, active: true }, // Junior
+    ],
+    TAILOR_SPECIAL_PAY: [
+        // Example: Marco gets a special 50% uplift (0.50) on Full Suit Construction instead of his base 35%
+        { id: 'tsp1', tailor_id: 't2', task_type_id: 'tt1', uplift_pct: 0.50 },
+        // Example: Sarah has a pending special pay rule (needs uplift rate) for Trouser Stitching
+        { id: 'tsp2', tailor_id: 't3', task_type_id: 'tt4', uplift_pct: null }
     ],
     items: [
         {

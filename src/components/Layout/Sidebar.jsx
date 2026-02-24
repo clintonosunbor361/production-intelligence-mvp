@@ -6,26 +6,26 @@ import { RoleSwitcher } from './RoleSwitcher';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+
+    // Operational
+    { name: 'Production', href: '/production', icon: Shirt },
+    { name: 'QC Queue', href: '/qc', icon: CheckCircle2 },
+    { name: 'Completion', href: '/receiving', icon: Box }, // Reusing Inventory icon for Receiving
+    { name: 'Accounts', href: '/accounts', icon: ShoppingBag, count: 5 }, // Reusing Orders icon/spot for Accounts
+    { name: 'Analytics', href: '/analytics', icon: PieChart },
+
     // Admin / Master Data
     { name: 'Tailors', href: '/tailors', icon: Users },
     { name: 'Products', href: '/products', icon: Shirt },
     { name: 'Categories', href: '/categories', icon: Box },
     { name: 'Rates', href: '/rates', icon: PieChart },
-
-    // Operational (Placeholders for now, will link correctly later)
-    { name: 'Accounts', href: '/accounts', icon: ShoppingBag, count: 5 }, // Reusing Orders icon/spot for Accounts
-    { name: 'QC Queue', href: '/qc', icon: CheckCircle2 },
-    { name: 'Receiving', href: '/receiving', icon: Box }, // Reusing Inventory icon for Receiving
-    // { name: 'Fittings', href: '/fittings', icon: Scissors }, // using Scissors as placeholder
-    { name: 'Production', href: '/production', icon: Shirt },
-    { name: 'Analytics', href: '/analytics', icon: PieChart },
 ];
 
 export function Sidebar({ isOpen, onClose }) {
     return (
         <>
             {/* Mobile Overlay */}
-            <div 
+            <div
                 className={clsx(
                     "fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity",
                     isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -34,7 +34,7 @@ export function Sidebar({ isOpen, onClose }) {
             />
 
             {/* Sidebar Container */}
-            <div 
+            <div
                 className={clsx(
                     "fixed inset-y-0 left-0 z-50 w-64 bg-maison-surface border-r border-gray-100 flex flex-col transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen md:sticky md:top-0",
                     isOpen ? "translate-x-0" : "-translate-x-full"
@@ -52,7 +52,7 @@ export function Sidebar({ isOpen, onClose }) {
                         </div>
                     </div>
                     {/* Close Button (Mobile Only) */}
-                    <button 
+                    <button
                         onClick={onClose}
                         className="md:hidden text-maison-secondary hover:text-maison-primary"
                     >
