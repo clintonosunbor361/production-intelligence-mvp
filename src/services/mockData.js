@@ -21,23 +21,20 @@ export const SEED_DATA = {
         { id: 'tt5', product_type_id: 'pt1', category_id: 'cat5', name: 'Button Attachment', active: true },
     ],
     RATE_CARD: [
-        { id: 'rc1', product_type_id: 'pt1', category_id: 'cat1', task_type_id: 'tt1', base_fee: 500.00 },
-        { id: 'rc2', product_type_id: 'pt1', category_id: 'cat2', task_type_id: 'tt2', base_fee: 50.00 },
-        { id: 'rc3', product_type_id: 'pt2', category_id: 'cat1', task_type_id: 'tt3', base_fee: 300.00 },
-        { id: 'rc4', product_type_id: 'pt5', category_id: 'cat1', task_type_id: 'tt4', base_fee: 150.00 },
-        { id: 'rc5', product_type_id: 'pt1', category_id: 'cat5', task_type_id: 'tt5', base_fee: 20.00 },
+        { id: 'rc1', product_type_id: 'pt1', category_id: 'cat1', task_type_id: 'tt1', band_a_fee: 500.00, band_b_fee: 550.00 },
+        { id: 'rc2', product_type_id: 'pt1', category_id: 'cat2', task_type_id: 'tt2', band_a_fee: 50.00, band_b_fee: 60.00 },
+        { id: 'rc3', product_type_id: 'pt2', category_id: 'cat1', task_type_id: 'tt3', band_a_fee: 300.00, band_b_fee: 350.00 },
+        { id: 'rc4', product_type_id: 'pt5', category_id: 'cat1', task_type_id: 'tt4', band_a_fee: 150.00, band_b_fee: 180.00 },
+        { id: 'rc5', product_type_id: 'pt1', category_id: 'cat5', task_type_id: 'tt5', band_a_fee: 20.00, band_b_fee: 25.00 },
     ],
     TAILORS: [
-        { id: 't1', name: 'Elena Rossi', department: 'SUIT', base_fee_pct: 0.30, weekly_bonus_pct: 0.05, active: true, percentage: 0.30 }, // keeping percentage for backwards compat testing
-        { id: 't2', name: 'Marco Vitti', department: 'CUTTER', base_fee_pct: 0.35, weekly_bonus_pct: 0.10, active: true }, // Senior
-        { id: 't3', name: 'Sarah Jin', department: 'PANT', base_fee_pct: 0.30, weekly_bonus_pct: 0.05, active: true },
-        { id: 't4', name: 'Ahmed K.', department: 'SHIRT', base_fee_pct: 0.25, weekly_bonus_pct: 0.02, active: true }, // Junior
+        { id: 't1', name: 'Elena Rossi', department: 'SUIT', band: 'A', active: true, base_fee_pct: 0.30, percentage: 0.30 }, // keeping old fields for test safety
+        { id: 't2', name: 'Marco Vitti', department: 'CUTTER', band: 'B', active: true }, // Senior
+        { id: 't3', name: 'Sarah Jin', department: 'PANT', band: 'A', active: true },
+        { id: 't4', name: 'Ahmed K.', department: 'SHIRT', band: 'A', active: true }, // Junior
     ],
     TAILOR_SPECIAL_PAY: [
-        // Example: Marco gets a special 50% uplift (0.50) on Full Suit Construction instead of his base 35%
-        { id: 'tsp1', tailor_id: 't2', task_type_id: 'tt1', uplift_pct: 0.50 },
-        // Example: Sarah has a pending special pay rule (needs uplift rate) for Trouser Stitching
-        { id: 'tsp2', tailor_id: 't3', task_type_id: 'tt4', uplift_pct: null }
+        // Deprecated entirely, left empty to avoid breaking legacy iterators
     ],
     items: [
         {

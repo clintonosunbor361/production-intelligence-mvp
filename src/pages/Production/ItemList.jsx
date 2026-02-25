@@ -4,7 +4,7 @@ import { Card } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
 import { CSVImporter } from '../../components/Shared/CSVImporter';
-import { Plus, Trash2, Search, FilterX, Clock, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Search, FilterX, Clock, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfDay, endOfDay } from 'date-fns';
 
@@ -20,6 +20,7 @@ export default function ItemList() {
         startDate: '',
         endDate: ''
     });
+    const [expandedGroups, setExpandedGroups] = useState({});
 
     useEffect(() => {
         loadItems();
@@ -72,6 +73,26 @@ export default function ItemList() {
         return match;
     });
 
+    const groupedItems = filteredItems.reduce((acc, item) => {
+        const tId = item.ticket_id || 'Unassigned';
+        if (!acc[tId]) {
+            acc[tId] = {
+                ticket_id: tId,
+                customer_name: item.customer_name || 'Unknown Client',
+                items: []
+            };
+        }
+        acc[tId].items.push(item);
+        return acc;
+    }, {});
+
+    const toggleGroup = (ticketId) => {
+        setExpandedGroups(prev => ({
+            ...prev,
+            [ticketId]: !prev[ticketId]
+        }));
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -97,9 +118,6 @@ export default function ItemList() {
 
                                 if (ticket_id && customer_name && productTypeName) {
                                     let pt = productTypes.find(p => p.name.toLowerCase() === productTypeName.toLowerCase());
-                                    // If not found, ignore or maybe create? Plan said ignore/flag. 
-                                    // Let's create PT if missing for better UX? Or just default to first?
-                                    // Let's create it.
                                     if (!pt) {
                                         pt = await db.createProductType(productTypeName);
                                     }
@@ -223,45 +241,87 @@ export default function ItemList() {
                 </div>
             </Card>
 
-            <Card padding="p-0">
-                <Table headers={['Item Key', 'Ticket', 'Customer', 'Product', 'Status', 'Date', 'Actions']}>
-                    {filteredItems.map((item) => (
-                        <TableRow key={item.id}>
-                            <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
-                            <TableCell>{item.ticket_id}</TableCell>
-                            <TableCell>{item.customer_name}</TableCell>
-                            <TableCell>{item.product_type_name}</TableCell>
-                            <TableCell>
-                                <Badge variant={getStatusVariant(item.status)}>
-                                    {item.status}
-                                </Badge>
-                                {item.needs_qc_attention && (
-                                    <Badge variant="warning" className="ml-2">Needs QC</Badge>
-                                )}
-                            </TableCell>
-                            <TableCell className="text-gray-500 text-sm">
-                                {item.created_at ? format(new Date(item.created_at), 'MMM d, yyyy') : '-'}
-                            </TableCell>
-                            <TableCell>
-                                <button
-                                    onClick={() => handleDeleteItem(item.id)}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                    title="Delete Item"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    {filteredItems.length === 0 && !loading && (
-                        <tr>
-                            <td colSpan="7" className="px-6 py-8 text-center text-gray-500 text-sm">
-                                No items found matching the selected filters.
-                            </td>
-                        </tr>
-                    )}
-                </Table>
-            </Card>
+            <div className="space-y-4">
+                {Object.values(groupedItems).map((group) => {
+                    const isExpanded = expandedGroups[group.ticket_id];
+                    return (
+                        <Card key={group.ticket_id} padding="p-0" className="overflow-hidden border border-gray-200">
+                            {/* Accordion Header */}
+                            <div
+                                onClick={() => toggleGroup(group.ticket_id)}
+                                className={`flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}
+                            >
+                                <div className="flex items-center gap-3 w-full">
+                                    <div className="text-maison-primary min-w-5">
+                                        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                                    </div>
+                                    <div className="flex-1 flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <h3 className="font-serif font-medium text-lg text-maison-primary">
+                                                {group.customer_name}
+                                            </h3>
+                                            <span className="text-gray-300">|</span>
+                                            <span className="font-mono text-sm font-medium text-gray-500">
+                                                {group.ticket_id}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-sm text-maison-secondary">
+                                                {group.items.length} {group.items.length === 1 ? 'Product' : 'Products'} Total
+                                            </span>
+                                            <Badge variant={group.items.filter(i => i.status === 'Received').length === group.items.length ? 'success' : 'neutral'}>
+                                                {group.items.filter(i => i.status === 'Received').length} / {group.items.length} Completed
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Accordion Body */}
+                            {isExpanded && (
+                                <div className="bg-white">
+                                    <Table headers={['Item Key', 'Product', 'Status', 'Date', 'Actions']}>
+                                        {group.items.map((item) => (
+                                            <TableRow key={item.id}>
+                                                <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
+                                                <TableCell>{item.product_type_name}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={getStatusVariant(item.status)}>
+                                                        {item.status}
+                                                    </Badge>
+                                                    {item.needs_qc_attention && (
+                                                        <Badge variant="warning" className="ml-2">Needs QC</Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-gray-500 text-sm">
+                                                    {item.created_at ? format(new Date(item.created_at), 'MMM d, yyyy') : '-'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <button
+                                                        onClick={() => handleDeleteItem(item.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                                        title="Delete Item"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </Table>
+                                </div>
+                            )}
+                        </Card>
+                    );
+                })}
+
+                {filteredItems.length === 0 && !loading && (
+                    <Card>
+                        <div className="py-12 text-center text-gray-500 text-sm">
+                            No items found matching the selected filters.
+                        </div>
+                    </Card>
+                )}
+            </div>
         </div>
     );
 }

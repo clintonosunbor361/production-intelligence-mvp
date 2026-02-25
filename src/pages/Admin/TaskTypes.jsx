@@ -22,7 +22,8 @@ export default function ManageTaskTypes() {
         product_type_id: '',
         category_id: '',
         name: '',
-        base_fee: ''
+        band_a_fee: '',
+        band_b_fee: ''
     });
 
     useEffect(() => {
@@ -52,7 +53,8 @@ export default function ManageTaskTypes() {
                 ...task,
                 product_name: p ? p.name : 'Unknown',
                 category_name: c ? c.name : 'Unknown',
-                base_fee: rate ? rate.base_fee : 0
+                band_a_fee: rate ? rate.band_a_fee : 0,
+                band_b_fee: rate ? rate.band_b_fee : 0
             };
         });
 
@@ -70,7 +72,8 @@ export default function ManageTaskTypes() {
                 product_type_id: item.product_type_id,
                 category_id: item.category_id,
                 name: item.name,
-                base_fee: item.base_fee
+                band_a_fee: item.band_a_fee,
+                band_b_fee: item.band_b_fee
             });
         } else {
             setEditingItem(null);
@@ -78,7 +81,8 @@ export default function ManageTaskTypes() {
                 product_type_id: productTypes[0]?.id || '',
                 category_id: categories[0]?.id || '',
                 name: '',
-                base_fee: ''
+                band_a_fee: '',
+                band_b_fee: ''
             });
         }
         setIsModalOpen(true);
@@ -104,14 +108,15 @@ export default function ManageTaskTypes() {
                             let count = 0;
                             setLoading(true);
                             for (const row of data) {
-                                // Product, Category, Task Name, Base Fee
+                                // Product, Category, Task Name, Band A Fee, Band B Fee
                                 const productName = row.Product;
                                 const categoryName = row.Category;
                                 const taskName = row['Task Name'];
-                                const baseFee = row['Base Fee'];
+                                const bandAFee = row['Band A Fee'] || row['Base Fee'];
+                                const bandBFee = row['Band B Fee'] || bandAFee;
 
-                                if (productName && categoryName && taskName && baseFee) {
-                                    await db.createTaskAndRate(productName, categoryName, taskName, baseFee);
+                                if (productName && categoryName && taskName && bandAFee) {
+                                    await db.createTaskAndRate(productName, categoryName, taskName, bandAFee, bandBFee);
                                     count++;
                                 }
                             }
@@ -127,13 +132,14 @@ export default function ManageTaskTypes() {
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Product', 'Category', 'Task Name', 'Base Fee', 'Status', 'Actions']}>
+                <Table headers={['Product', 'Category', 'Task Name', 'Band A Fee', 'Band B Fee', 'Status', 'Actions']}>
                     {tasks.map((item) => (
                         <TableRow key={item.id}>
                             <TableCell>{item.product_name}</TableCell>
                             <TableCell>{item.category_name}</TableCell>
                             <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>₦{parseFloat(item.base_fee).toFixed(2)}</TableCell>
+                            <TableCell>₦{parseFloat(item.band_a_fee).toFixed(2)}</TableCell>
+                            <TableCell>₦{parseFloat(item.band_b_fee).toFixed(2)}</TableCell>
                             <TableCell>
                                 <Badge variant={item.active ? 'success' : 'neutral'}>
                                     {item.active ? 'Active' : 'Inactive'}
@@ -196,16 +202,28 @@ export default function ManageTaskTypes() {
                         required
                     />
 
-                    <Input
-                        label="Base Fee (₦)"
-                        type="number"
-                        value={formData.base_fee}
-                        onChange={(e) => setFormData({ ...formData, base_fee: e.target.value })}
-                        placeholder="50.00"
-                        required
-                        min="0"
-                        step="0.01"
-                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Band A Fee (₦)"
+                            type="number"
+                            value={formData.band_a_fee}
+                            onChange={(e) => setFormData({ ...formData, band_a_fee: e.target.value })}
+                            placeholder="50.00"
+                            required
+                            min="0"
+                            step="0.01"
+                        />
+                        <Input
+                            label="Band B Fee (₦)"
+                            type="number"
+                            value={formData.band_b_fee}
+                            onChange={(e) => setFormData({ ...formData, band_b_fee: e.target.value })}
+                            placeholder="60.00"
+                            required
+                            min="0"
+                            step="0.01"
+                        />
+                    </div>
 
                     <div className="pt-4 flex justify-end gap-3">
                         <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>

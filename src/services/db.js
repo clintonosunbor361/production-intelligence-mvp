@@ -84,20 +84,12 @@ class MaisonDB {
     async createTailor(tailorData) {
         await delay(200);
 
-        let base_fee_pct = tailorData.base_fee_pct !== undefined ? parseFloat(tailorData.base_fee_pct) : parseFloat(tailorData.percentage || 0);
-        if (base_fee_pct > 1) base_fee_pct = base_fee_pct / 100;
-
-        let weekly_bonus_pct = parseFloat(tailorData.weekly_bonus_pct || 0);
-        if (weekly_bonus_pct > 1) weekly_bonus_pct = weekly_bonus_pct / 100;
-
         const newTailor = {
             id: `t_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             name: tailorData.name,
             department: tailorData.department || 'OTHER',
-            base_fee_pct,
-            weekly_bonus_pct,
-            active: tailorData.active !== undefined ? tailorData.active : true,
-            percentage: base_fee_pct // fallback for very old code
+            band: tailorData.band === 'B' ? 'B' : 'A',
+            active: tailorData.active !== undefined ? tailorData.active : true
         };
         const updatedData = { ...this.data, TAILORS: [...this.data.TAILORS, newTailor] };
         this._saveData(updatedData);
@@ -107,18 +99,9 @@ class MaisonDB {
     async updateTailor(id, updates) {
         await delay(200);
 
-        // Clean percentages if they are being updated
         let cleanUpdates = { ...updates };
-        if (cleanUpdates.base_fee_pct !== undefined) {
-            let pct = parseFloat(cleanUpdates.base_fee_pct);
-            if (pct > 1) pct = pct / 100;
-            cleanUpdates.base_fee_pct = pct;
-            cleanUpdates.percentage = pct; // sync legacy field
-        }
-        if (cleanUpdates.weekly_bonus_pct !== undefined) {
-            let pct = parseFloat(cleanUpdates.weekly_bonus_pct);
-            if (pct > 1) pct = pct / 100;
-            cleanUpdates.weekly_bonus_pct = pct;
+        if (cleanUpdates.band && cleanUpdates.band !== 'A' && cleanUpdates.band !== 'B') {
+            cleanUpdates.band = 'A';
         }
 
         const updatedTailors = this.data.TAILORS.map(t =>
@@ -126,6 +109,20 @@ class MaisonDB {
         );
         this._saveData({ ...this.data, TAILORS: updatedTailors });
         return updatedTailors.find(t => t.id === id);
+    }
+
+    async toggleTailorStatus(id) {
+        await delay(100);
+        const tailor = this.data.TAILORS.find(t => t.id === id);
+        if (!tailor) throw new Error("Tailor not found");
+
+        const newStatus = !tailor.active;
+        const updatedTailors = this.data.TAILORS.map(t =>
+            t.id === id ? { ...t, active: newStatus } : t
+        );
+
+        this._saveData({ ...this.data, TAILORS: updatedTailors });
+        return newStatus;
     }
 
     async saveTailorSpecialPay(tailor_id, task_type_id, uplift_pct) {
@@ -160,11 +157,11 @@ class MaisonDB {
         this._saveData({ ...this.data, TAILOR_SPECIAL_PAY: specialPays });
     }
 
-    async createTaskAndRate(productName, categoryName, taskName, baseFee) {
+    async createTaskAndRate(productName, categoryName, taskName, bandAFee, bandBFee) {
         await delay(200);
 
         let pt = this.data.PRODUCT_TYPES.find(p => p.name.toLowerCase() === productName.toLowerCase());
-        if (!pt) pt = await this.createProductType(productName); // Lazy create dependencies? Or fail. Let's lazy create for smoother UX.
+        if (!pt) pt = await this.createProductType(productName);
 
         let cat = this.data.CATEGORIES.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
         if (!cat) cat = await this.createCategory(categoryName);
@@ -184,7 +181,7 @@ class MaisonDB {
                 name: taskName,
                 active: true
             };
-            this.data.TASK_TYPES.push(tt); // Modifying in place for this complex op, saved at end
+            this.data.TASK_TYPES.push(tt);
         }
 
         // Add/Update Rate
@@ -199,7 +196,8 @@ class MaisonDB {
             product_type_id: pt.id,
             category_id: cat.id,
             task_type_id: tt.id,
-            base_fee: parseFloat(baseFee)
+            band_a_fee: parseFloat(bandAFee),
+            band_b_fee: parseFloat(bandBFee) || parseFloat(bandAFee)
         };
 
         if (existingRateIndex >= 0) {
@@ -328,7 +326,7 @@ class MaisonDB {
             // Backward compatibility for task_pay calculation if missing
             let task_pay = task.task_pay;
             if (task_pay === undefined) {
-                const base_fee = task.base_fee_snapshot !== undefined ? task.base_fee_snapshot : (this.data.RATE_CARD.find(r => r.product_type_id === item?.product_type_id && r.category_id === task.category_id && r.task_type_id === task.task_type_id)?.base_fee || 0);
+                const base_fee = task.base_fee_snapshot !== undefined ? task.base_fee_snapshot : (this.data.RATE_CARD.find(r => r.product_type_id === item?.product_type_id && r.category_id === task.category_id && r.task_type_id === task.task_type_id)?.band_a_fee || 0);
                 const uplift = task.uplift_pct_snapshot !== undefined ? task.uplift_pct_snapshot : (tailor?.base_fee_pct ?? tailor?.percentage ?? 0);
                 task_pay = base_fee * (1 + uplift);
             }
@@ -361,28 +359,15 @@ class MaisonDB {
         }
 
         const tailor = this.data.TAILORS.find(t => t.id === taskData.tailor_id);
-        const specialPays = this.data.TAILOR_SPECIAL_PAY || [];
-
-        // Check for special pay override
-        const specialPay = specialPays.find(sp => sp.tailor_id === taskData.tailor_id && sp.task_type_id === taskData.task_type_id);
-
-        let uplift_used = tailor.base_fee_pct !== undefined ? tailor.base_fee_pct : tailor.percentage;
-        if (specialPay && specialPay.uplift_pct !== null) {
-            uplift_used = specialPay.uplift_pct;
-        }
-
-        const base_fee_snapshot = rateCard.base_fee;
-        const uplift_pct_snapshot = uplift_used;
-        const task_pay = base_fee_snapshot * (1 + uplift_used);
+        const tailorBand = tailor?.band === 'B' ? 'B' : 'A';
+        const rateToUse = tailorBand === 'B' ? rateCard.band_b_fee : rateCard.band_a_fee;
 
         const newTask = {
             id: crypto.randomUUID(),
             ...taskData,
-            base_fee_snapshot,
-            uplift_pct_snapshot,
-            tailor_percentage_snapshot: uplift_pct_snapshot, // legacy fallback safety
-            task_pay,
-            tailor_pay: task_pay, // legacy fallback safety
+            pay_band_snapshot: tailorBand,
+            rate_snapshot: rateToUse,
+            task_pay: rateToUse,
             verification_status: 'Pending',
             verified_by_role: null,
             verified_at: null,
@@ -442,24 +427,17 @@ class MaisonDB {
             const tailorTasks = verifiedTasks.filter(t => t.tailor_id === tailor.id);
             const weekly_verified_total = tailorTasks.reduce((sum, t) => {
                 let pay = t.task_pay;
-                // backward compat for old tasks
                 if (pay === undefined && t.tailor_pay !== undefined) pay = t.tailor_pay;
                 if (pay === undefined) pay = 0;
                 return sum + pay;
             }, 0);
-
-            const bonusPct = tailor.weekly_bonus_pct || 0;
-            const weekly_bonus_amount = weekly_verified_total * bonusPct;
-            const weekly_total_pay = weekly_verified_total + weekly_bonus_amount;
 
             return {
                 tailor_id: tailor.id,
                 tailor_name: tailor.name,
                 department: tailor.department,
                 weekly_verified_total,
-                weekly_bonus_pct: bonusPct,
-                weekly_bonus_amount,
-                weekly_total_pay,
+                weekly_total_pay: weekly_verified_total,
                 task_count: tailorTasks.length
             };
         });

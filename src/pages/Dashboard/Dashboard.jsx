@@ -271,9 +271,6 @@ export default function Dashboard() {
                                 <th className="px-4 py-3 font-medium text-gray-500">Name</th>
                                 <th className="px-4 py-3 font-medium text-gray-500">Department</th>
                                 <th className="px-4 py-3 font-medium text-gray-500 text-center">Approved Tasks</th>
-                                <th className="px-4 py-3 font-medium text-gray-500 text-right">Task Total</th>
-                                <th className="px-4 py-3 font-medium text-gray-500 text-right">Bonus Rate</th>
-                                <th className="px-4 py-3 font-medium text-gray-500 text-right">Bonus Amount</th>
                                 <th className="px-4 py-3 font-bold text-maison-primary text-right">Total Payout</th>
                             </tr>
                         </thead>
@@ -283,9 +280,6 @@ export default function Dashboard() {
                                     <td className="px-4 py-3 font-medium text-gray-900">{p.tailor_name}</td>
                                     <td className="px-4 py-3 text-gray-500">{p.department}</td>
                                     <td className="px-4 py-3 text-center">{p.task_count}</td>
-                                    <td className="px-4 py-3 text-right">₦{p.weekly_verified_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right text-gray-500">{(p.weekly_bonus_pct * 100).toFixed(1)}%</td>
-                                    <td className="px-4 py-3 text-right text-maison-accent">₦{p.weekly_bonus_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td className="px-4 py-3 text-right font-bold text-maison-primary">₦{p.weekly_total_pay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                             ))}

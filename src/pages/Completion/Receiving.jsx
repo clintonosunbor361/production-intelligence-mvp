@@ -3,13 +3,22 @@ import { db } from '../../services/db';
 import { Card } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '../../components/UI/Table';
-import { PackageCheck } from 'lucide-react';
-import { format } from 'date-fns';
+import { PackageCheck, ChevronDown, ChevronRight, Search, FilterX } from 'lucide-react';
+import { format, startOfDay, endOfDay } from 'date-fns';
 
 export default function Receiving() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('available'); // 'all', 'received', 'available'
+    // Maintain the default 'Available' filter state by pre-setting status to 'Assigned by QC'
+    const [filters, setFilters] = useState({
+        ticketId: '',
+        customerName: '',
+        productType: '',
+        status: '', // Default to All Statuses
+        startDate: '',
+        endDate: ''
+    });
+    const [expandedGroups, setExpandedGroups] = useState({});
 
     useEffect(() => {
         loadItems();
@@ -22,12 +31,46 @@ export default function Receiving() {
         setLoading(false);
     };
 
+    const uniqueProductTypes = [...new Set(items.map(i => i.product_type_name))].filter(Boolean);
+    // Ensure 'Assigned by QC' is an option even if no items currently have that status
+    const uniqueStatuses = [...new Set([...items.map(i => i.status), 'Assigned by QC', 'Received'])].filter(Boolean);
+
     const filteredItems = items.filter(item => {
-        if (filter === 'all') return true;
-        if (filter === 'received') return item.status === 'Received';
-        if (filter === 'available') return item.status !== 'Received';
-        return true;
+        let match = true;
+
+        if (filters.ticketId && !item.ticket_id?.toLowerCase().includes(filters.ticketId.toLowerCase())) match = false;
+        if (filters.customerName && !item.customer_name?.toLowerCase().includes(filters.customerName.toLowerCase())) match = false;
+        if (filters.productType && item.product_type_name !== filters.productType) match = false;
+        if (filters.status && item.status !== filters.status) match = false;
+
+        if (filters.startDate || filters.endDate) {
+            const itemDate = new Date(item.created_at);
+            if (filters.startDate && itemDate < startOfDay(new Date(filters.startDate))) match = false;
+            if (filters.endDate && itemDate > endOfDay(new Date(filters.endDate))) match = false;
+        }
+
+        return match;
     });
+
+    // Group items by ticket_id
+    const groupedItems = filteredItems.reduce((acc, item) => {
+        if (!acc[item.ticket_id]) {
+            acc[item.ticket_id] = {
+                ticket_id: item.ticket_id,
+                customer_name: item.customer_name,
+                items: []
+            };
+        }
+        acc[item.ticket_id].items.push(item);
+        return acc;
+    }, {});
+
+    const toggleGroup = (ticketId) => {
+        setExpandedGroups(prev => ({
+            ...prev,
+            [ticketId]: !prev[ticketId]
+        }));
+    };
 
     const handleReceive = async (itemId) => {
         if (!window.confirm("Mark item as Physically Received?")) return;
@@ -42,64 +85,164 @@ export default function Receiving() {
                     <h1 className="text-2xl font-serif text-maison-primary">Completion & Receiving</h1>
                     <p className="text-sm text-maison-secondary">Mark items as finished and received into stock</p>
                 </div>
-
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                    <button
-                        onClick={() => setFilter('all')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'all' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                        All Items
-                    </button>
-                    <button
-                        onClick={() => setFilter('available')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'available' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                        Available
-                    </button>
-                    <button
-                        onClick={() => setFilter('received')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'received' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                        Received
-                    </button>
-                </div>
             </div>
 
-            <Card padding="p-0">
-                <Table headers={['Item Key', 'Product', 'Customer', 'Current Status', 'Action']}>
-                    {filteredItems.map((item) => (
-                        <TableRow key={item.id}>
-                            <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
-                            <TableCell>{item.product_type_name}</TableCell>
-                            <TableCell>{item.customer_name}</TableCell>
-                            <TableCell>
-                                <Badge variant={item.status === 'Received' ? 'success' : 'brand'}>{item.status}</Badge>
-                            </TableCell>
-                            <TableCell>
-                                {item.status !== 'Received' ? (
-                                    <Button
-                                        size="sm"
-                                        className="bg-maison-primary"
-                                        onClick={() => handleReceive(item.id)}
-                                    >
-                                        <PackageCheck size={16} className="mr-2" />
-                                        Receive Item
-                                    </Button>
-                                ) : (
-                                    <span className="text-sm text-gray-500 italic">Received</span>
-                                )}
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    {filteredItems.length === 0 && !loading && (
-                        <tr>
-                            <td colSpan="5" className="px-6 py-8 text-center text-gray-500 text-sm">
-                                No items pending receipt.
-                            </td>
-                        </tr>
-                    )}
-                </Table>
+            <Card className="pb-4">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-end">
+                    <div className="flex-1 min-w-[150px]">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ticket ID</label>
+                        <div className="relative">
+                            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="..."
+                                value={filters.ticketId}
+                                onChange={(e) => setFilters(prev => ({ ...prev, ticketId: e.target.value }))}
+                                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex-1 min-w-[150px]">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Customer</label>
+                        <input
+                            type="text"
+                            placeholder="Search name..."
+                            value={filters.customerName}
+                            onChange={(e) => setFilters(prev => ({ ...prev, customerName: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
+                        />
+                    </div>
+                    <div className="w-full sm:w-auto min-w-[140px]">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Product Type</label>
+                        <select
+                            value={filters.productType}
+                            onChange={(e) => setFilters(prev => ({ ...prev, productType: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
+                        >
+                            <option value="">All Products</option>
+                            {uniqueProductTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+                        </select>
+                    </div>
+                    <div className="w-full sm:w-auto min-w-[130px]">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
+                        <select
+                            value={filters.status}
+                            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
+                        >
+                            <option value="">All Statuses</option>
+                            {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+                    <div className="w-full sm:w-auto">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Date Range</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                value={filters.startDate}
+                                onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input
+                                type="date"
+                                value={filters.endDate}
+                                onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
+                            />
+                        </div>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        onClick={() => setFilters({ ticketId: '', customerName: '', productType: '', status: 'Assigned by QC', startDate: '', endDate: '' })}
+                        className="text-gray-500 hover:text-gray-700 bg-gray-50 px-3"
+                        title="Clear Filters"
+                    >
+                        <FilterX size={16} />
+                    </Button>
+                </div>
             </Card>
+
+            <div className="space-y-4">
+                {Object.values(groupedItems).map((group) => {
+                    const isExpanded = expandedGroups[group.ticket_id];
+                    return (
+                        <Card key={group.ticket_id} padding="p-0" className="overflow-hidden border border-gray-200">
+                            {/* Accordion Header */}
+                            <div
+                                onClick={() => toggleGroup(group.ticket_id)}
+                                className={`flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}
+                            >
+                                <div className="flex items-center gap-3 w-full">
+                                    <div className="text-maison-primary min-w-5">
+                                        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                                    </div>
+                                    <div className="flex-1 flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <h3 className="font-serif font-medium text-lg text-maison-primary">
+                                                {group.customer_name}
+                                            </h3>
+                                            <span className="text-gray-300">|</span>
+                                            <span className="font-mono text-sm font-medium text-gray-500">
+                                                {group.ticket_id}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-sm text-maison-secondary">
+                                                {group.items.length} {group.items.length === 1 ? 'Product' : 'Products'} Total
+                                            </span>
+                                            <Badge variant={group.items.filter(i => i.status === 'Received').length === group.items.length ? 'success' : 'neutral'}>
+                                                {group.items.filter(i => i.status === 'Received').length} / {group.items.length} Completed
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Accordion Body */}
+                            {isExpanded && (
+                                <div className="bg-white">
+                                    <Table headers={['Item Key', 'Product', 'Current Status', 'Action']}>
+                                        {group.items.map((item) => (
+                                            <TableRow key={item.id}>
+                                                <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
+                                                <TableCell>{item.product_type_name}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={item.status === 'Received' ? 'success' : 'brand'}>{item.status}</Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {item.status !== 'Received' ? (
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-maison-primary"
+                                                            onClick={() => handleReceive(item.id)}
+                                                        >
+                                                            <PackageCheck size={16} className="mr-2" />
+                                                            Receive Item
+                                                        </Button>
+                                                    ) : (
+                                                        <span className="text-sm text-gray-500 italic flex items-center gap-1">
+                                                            <PackageCheck size={14} /> Received
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </Table>
+                                </div>
+                            )}
+                        </Card>
+                    );
+                })}
+
+                {filteredItems.length === 0 && !loading && (
+                    <Card>
+                        <div className="py-12 text-center text-gray-500 text-sm">
+                            No items match the current filter.
+                        </div>
+                    </Card>
+                )}
+            </div>
         </div>
     );
 }

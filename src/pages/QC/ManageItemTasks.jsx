@@ -21,7 +21,6 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
     const [categories, setCategories] = useState([]);
     const [taskTypes, setTaskTypes] = useState([]);
     const [tailors, setTailors] = useState([]);
-    const [specialPays, setSpecialPays] = useState([]);
 
     // Form State
     const [showAssignForm, setShowAssignForm] = useState(false);
@@ -68,17 +67,11 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
             return { ...task, tailor_name: tailor?.name, category_name: catObj?.name, task_type_name: ttObj?.name };
         });
 
-        // Fetch special pays for all tailors
-        const specialPaysPromises = tail.map(t => db.getTailorSpecialPay(t.id));
-        const specialPaysResults = await Promise.all(specialPaysPromises);
-        const allSpecialPays = specialPaysResults.flat();
-
         setTasks(enrichedTasks);
         setRateCard(rc);
         setCategories(cat);
         setTaskTypes(tt);
         setTailors(tail);
-        setSpecialPays(allSpecialPays);
         setLoading(false);
     };
 
@@ -104,27 +97,12 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
 
     const selectedTailor = tailors.find(t => t.id === newTask.tailor_id);
 
-    // Active uplift calculation based on overrides vs base
-    let activeUplift = 0;
-    let isOverride = false;
+    const tailorBand = selectedTailor ? (selectedTailor.band || 'A') : 'A';
 
-    if (selectedTailor) {
-        activeUplift = selectedTailor.base_fee_pct !== undefined ? selectedTailor.base_fee_pct : selectedTailor.percentage;
-
-        const specialPay = specialPays.find(sp =>
-            sp.tailor_id === selectedTailor.id &&
-            sp.task_type_id === newTask.task_type_id
-        );
-
-        if (specialPay && specialPay.uplift_pct !== null) {
-            activeUplift = specialPay.uplift_pct;
-            isOverride = true;
-        }
+    let calculatedPay = '0.00';
+    if (selectedRate && selectedTailor) {
+        calculatedPay = tailorBand === 'B' ? selectedRate.band_b_fee.toFixed(2) : selectedRate.band_a_fee.toFixed(2);
     }
-
-    const calculatedPay = (selectedRate && selectedTailor)
-        ? (selectedRate.base_fee * (1 + activeUplift)).toFixed(2)
-        : '0.00';
 
 
     const handleCreateTask = async (e) => {
@@ -239,9 +217,9 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
                                     >
                                         <option value="">Select Tailor...</option>
                                         {tailors.filter(t => t.active).map(t => {
-                                            const basePct = t.base_fee_pct !== undefined ? t.base_fee_pct : t.percentage;
+                                            const band = t.band || 'A';
                                             return (
-                                                <option key={t.id} value={t.id}>{t.name} (Base: +{(basePct * 100).toFixed(0)}%)</option>
+                                                <option key={t.id} value={t.id}>{t.name} (Band {band})</option>
                                             );
                                         })}
                                     </select>
@@ -251,16 +229,9 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
                             {/* Summary Box */}
                             <div className="bg-white p-4 rounded-lg border border-gray-100 mt-4 shadow-sm">
                                 <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-gray-500">Base Fee:</span>
+                                    <span className="text-gray-500">Pay Band:</span>
                                     <span className="font-medium">
-                                        ₦{selectedRate ? selectedRate.base_fee.toFixed(2) : '-'}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-gray-500">Uplift Applied:</span>
-                                    <span className="font-medium flex items-center gap-2">
-                                        {selectedTailor ? `+${(activeUplift * 100).toFixed(0)}%` : '-'}
-                                        {isOverride && <Badge variant="warning">Special Override</Badge>}
+                                        Band {tailorBand}
                                     </span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-maison-primary pt-2 border-t border-gray-100 mt-2">
