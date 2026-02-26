@@ -1,133 +1,112 @@
-// @ts-nocheck
-"use client";
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { db } from '@/services/db';
-import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
-import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { Modal } from '@/components/UI/Modal';
-import { Input } from '@/components/UI/Input';
-import { CSVImporter } from '@/components/Shared/CSVImporter';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Card } from '@/components/UI/Card'
+import { Button } from '@/components/UI/Button'
+import { Table, TableRow, TableCell } from '@/components/UI/Table'
+import { Modal } from '@/components/UI/Modal'
+import { Input } from '@/components/UI/Input'
+import { Plus, Edit2 } from 'lucide-react'
+import { upsertProductTypeAction } from '@/app/actions/spine'
+import { format } from 'date-fns'
 
 export default function ManageProductTypes() {
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
+    const supabase = createClient()
 
-    const [formData, setFormData] = useState({ name: '' });
+    const [items, setItems] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [modalOpen, setModalOpen] = useState(false)
+    const [editing, setEditing] = useState<any>(null)
+    const [name, setName] = useState('')
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState('')
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    const load = useCallback(async () => {
+        const { data } = await supabase.from('product_types').select('*').order('name')
+        setItems(data ?? [])
+        setLoading(false)
+    }, [])
 
-    const loadData = async () => {
-        setLoading(true);
-        const data = await db.getProductTypes();
-        setItems(data);
-        setLoading(false);
-    };
+    useEffect(() => { load() }, [load])
 
-    const handleOpenModal = (item = null) => {
-        if (item) {
-            setEditingItem(item);
-            setFormData({ name: item.name });
-        } else {
-            setEditingItem(null);
-            setFormData({ name: '' });
+    const openModal = (item?: any) => {
+        setEditing(item ?? null)
+        setName(item?.name ?? '')
+        setError('')
+        setModalOpen(true)
+    }
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setError('')
+        setSaving(true)
+        try {
+            await upsertProductTypeAction(name.trim(), editing?.id)
+            setModalOpen(false)
+            await load()
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setSaving(false)
         }
-        setIsModalOpen(true);
-    };
-
-    const handleSave = async (e) => {
-        e.preventDefault();
-        console.log("Saving Product Type:", formData);
-        setIsModalOpen(false);
-        alert("Master Data writes are read-only in this demo version.");
-    };
+    }
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-serif text-maison-primary">Product Types</h1>
-                    <p className="text-sm text-maison-secondary">Define garment types (Suit, Cape, etc.)</p>
+                    <p className="text-sm text-maison-secondary">Garment categories used across items and rate cards</p>
                 </div>
-                <div className="flex gap-3">
-                    <CSVImporter
-                        onImport={async (data) => {
-                            let count = 0;
-                            setLoading(true);
-                            for (const row of data) {
-                                if (row.Name) {
-                                    await db.createProductType(row.Name);
-                                    count++;
-                                }
-                            }
-                            await loadData();
-                            alert(`Imported ${count} product types.`);
-                        }}
-                    />
-                    <Button onClick={() => handleOpenModal()}>
-                        <Plus size={16} className="mr-2" />
-                        Add Product Type
-                    </Button>
-                </div>
+                <Button onClick={() => openModal()}>
+                    <Plus size={16} className="mr-2" /> Add Product Type
+                </Button>
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Name', 'Status', 'Actions']}>
-                    {items.map((item) => (
+                <Table headers={['Name', 'Created', 'Actions']}>
+                    {items.map(item => (
                         <TableRow key={item.id}>
                             <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>
-                                <Badge variant={item.active ? 'success' : 'neutral'}>
-                                    {item.active ? 'Active' : 'Inactive'}
-                                </Badge>
+                            <TableCell className="text-gray-500 text-sm">
+                                {item.created_at ? format(new Date(item.created_at), 'MMM d, yyyy') : '—'}
                             </TableCell>
                             <TableCell>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleOpenModal(item)}
-                                        className="p-1 text-gray-400 hover:text-maison-primary transition-colors"
-                                    >
-                                        <Edit2 size={16} />
-                                    </button>
-                                    <button className="p-1 text-gray-400 hover:text-red-600 transition-colors">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={() => openModal(item)}
+                                    className="p-1.5 text-gray-400 hover:text-maison-primary hover:bg-gray-100 rounded transition-colors"
+                                    title="Edit"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
                             </TableCell>
                         </TableRow>
                     ))}
+                    {items.length === 0 && !loading && (
+                        <tr>
+                            <td colSpan={3} className="px-6 py-8 text-center text-gray-500 text-sm">No product types yet.</td>
+                        </tr>
+                    )}
                 </Table>
             </Card>
 
-            <Modal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title={editingItem ? 'Edit Product Type' : 'Add Product Type'}
-            >
+            <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Product Type' : 'Add Product Type'}>
                 <form onSubmit={handleSave} className="space-y-4">
                     <Input
                         label="Name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. Suit"
+                        value={name}
+                        onChange={(e: any) => setName(e.target.value)}
+                        placeholder="e.g. Agbada, Senator, Suit"
                         required
                     />
-                    <div className="pt-4 flex justify-end gap-3">
-                        <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">
-                            {editingItem ? 'Update' : 'Create'}
-                        </Button>
+                    {error && <p className="text-sm text-red-600">{error}</p>}
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
                     </div>
                 </form>
             </Modal>
         </div>
-    );
+    )
 }

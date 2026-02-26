@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import { AuthProvider } from '../context/AuthContext';
+import { SupabaseAuthProvider } from '../context/SupabaseAuthContext'
 
 export function Providers({ children }) {
-    return <AuthProvider>{children}</AuthProvider>;
+    return <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
 }

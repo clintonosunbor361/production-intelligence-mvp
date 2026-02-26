@@ -1,47 +1,57 @@
-// @ts-nocheck
-"use client";
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { db } from '@/services/db';
-import { useRouter } from 'next/navigation';
-import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
-import { ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { Card } from '@/components/UI/Card'
+import { Button } from '@/components/UI/Button'
+import { ArrowLeft } from 'lucide-react'
+import { createProductionBatchAction } from '@/app/actions/spine'
 
 export default function CreateItem() {
-    const router = useRouter();
-    const [productTypes, setProductTypes] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const router = useRouter()
+    const supabase = createClient()
 
-    const [formData, setFormData] = useState<any>({
-        ticket_id: '',
-        customer_name: '',
-        product_type_id: '',
-        notes: '',
-        quantity: 1
-    });
+    const [productTypes, setProductTypes] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [submitting, setSubmitting] = useState(false)
+    const [error, setError] = useState('')
+
+    const [formData, setFormData] = useState({
+        ticketNumber: '',
+        productTypeId: '',
+        quantity: 1,
+    })
 
     useEffect(() => {
-        loadData();
-    }, []);
+        supabase
+            .from('product_types')
+            .select('id, name')
+            .order('name')
+            .then(({ data }) => {
+                setProductTypes(data ?? [])
+                setLoading(false)
+            })
+    }, [])
 
-    const loadData = async () => {
-        const pt = await db.getProductTypes();
-        setProductTypes(pt.filter((p: any) => p.active));
-        setLoading(false);
-    };
-
-    const handleSubmit = async (e: any) => {
-        e.preventDefault();
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setError('')
+        setSubmitting(true)
         try {
-            await db.createItem(formData);
-            router.push('/production');
+            await createProductionBatchAction(
+                formData.ticketNumber,
+                formData.productTypeId,
+                formData.quantity
+            )
+            router.push('/production')
         } catch (err: any) {
-            alert(err.message);
+            setError(err.message)
+            setSubmitting(false)
         }
-    };
+    }
 
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <div className="p-8 text-gray-500 text-sm">Loading…</div>
 
     return (
         <div className="space-y-6 max-w-2xl mx-auto">
@@ -59,76 +69,68 @@ export default function CreateItem() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">Ticket ID (Optional)</label>
+                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">
+                                Ticket Number <span className="text-red-400">*</span>
+                            </label>
                             <input
                                 type="text"
-                                className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
+                                required
                                 placeholder="e.g. ORD-2026"
-                                value={formData.ticket_id}
-                                onChange={(e: any) => setFormData({ ...formData, ticket_id: e.target.value })}
+                                value={formData.ticketNumber}
+                                onChange={(e) => setFormData(p => ({ ...p, ticketNumber: e.target.value }))}
+                                className="block w-full rounded-lg border border-gray-200 shadow-sm text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
                             />
+                            <p className="mt-1 text-xs text-gray-400">An existing ticket with this number will be reused.</p>
                         </div>
+
                         <div>
-                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">Customer Name / Reference</label>
-                            <input
-                                type="text"
+                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">
+                                Product Type <span className="text-red-400">*</span>
+                            </label>
+                            <select
                                 required
-                                className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                                placeholder="Client name"
-                                value={formData.customer_name}
-                                onChange={(e: any) => setFormData({ ...formData, customer_name: e.target.value })}
-                            />
+                                value={formData.productTypeId}
+                                onChange={(e) => setFormData(p => ({ ...p, productTypeId: e.target.value }))}
+                                className="block w-full rounded-lg border border-gray-200 shadow-sm text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
+                            >
+                                <option value="">Select Product…</option>
+                                {productTypes.map(pt => (
+                                    <option key={pt.id} value={pt.id}>{pt.name}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Product Type</label>
-                        <select
+                    <div className="max-w-xs">
+                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">
+                            Quantity to Generate <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="50"
                             required
-                            className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                            value={formData.product_type_id}
-                            onChange={(e: any) => setFormData({ ...formData, product_type_id: e.target.value })}
-                        >
-                            <option value="">Select Product...</option>
-                            {productTypes.map((pt) => (
-                                <option key={pt.id} value={pt.id}>{pt.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-maison-secondary mb-1.5">Quantity to Generate</label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="50"
-                                required
-                                className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                                value={formData.quantity}
-                                onChange={(e: any) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                            />
-                            <p className="mt-1 text-xs text-gray-500">This will create {formData.quantity} separate items to track.</p>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Internal Notes (Optional)</label>
-                        <textarea
-                            className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                            rows={3}
-                            placeholder="Any special instructions"
-                            value={formData.notes}
-                            onChange={(e: any) => setFormData({ ...formData, notes: e.target.value })}
+                            value={formData.quantity}
+                            onChange={(e) => setFormData(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                            className="block w-full rounded-lg border border-gray-200 shadow-sm text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
                         />
+                        <p className="mt-1 text-xs text-gray-500">
+                            Creates {formData.quantity} separately tracked item{formData.quantity !== 1 ? 's' : ''}.
+                        </p>
                     </div>
+
+                    {error && (
+                        <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">{error}</p>
+                    )}
 
                     <div className="pt-4 border-t border-gray-100 flex justify-end gap-3">
                         <Button type="button" variant="ghost" onClick={() => router.push('/production')}>Cancel</Button>
-                        <Button type="submit">Generate Items</Button>
+                        <Button type="submit" disabled={submitting}>
+                            {submitting ? 'Generating…' : 'Generate Items'}
+                        </Button>
                     </div>
                 </form>
             </Card>
         </div>
-    );
+    )
 }

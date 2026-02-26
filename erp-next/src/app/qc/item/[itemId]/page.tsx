@@ -1,250 +1,232 @@
-// @ts-nocheck
-"use client";
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { db } from '@/services/db';
-import {  useParams, useRouter  } from 'next/navigation';
-import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
-import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { Modal } from '@/components/UI/Modal';
-import { ArrowLeft, Plus, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useParams, useRouter } from 'next/navigation'
+import { Card } from '@/components/UI/Card'
+import { Button } from '@/components/UI/Button'
+import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table'
+import { ArrowLeft, Plus, CheckCircle2, XCircle } from 'lucide-react'
+import {
+    createWorkAssignmentAction,
+    qcPassAction,
+    qcFailAction,
+} from '@/app/actions/spine'
 
-export default function ManageItemTasks({ itemId: propItemId, onClose }) {
-    const params = useParams();
-    const itemId = propItemId || params.itemId;
-    const router = useRouter();
+function assignmentStatusVariant(status: string) {
+    switch (status) {
+        case 'QC_PASSED': return 'success'
+        case 'QC_FAILED': return 'danger'
+        case 'PAID': return 'success'
+        case 'REVERSED': return 'neutral'
+        default: return 'warning'
+    }
+}
 
-    const [item, setItem] = useState(null);
-    const [tasks, setTasks] = useState([]);
-    const [loading, setLoading] = useState(true);
+function assignmentStatusLabel(status: string) {
+    switch (status) {
+        case 'CREATED': return 'Pending QC'
+        case 'QC_PASSED': return 'QC Passed'
+        case 'QC_FAILED': return 'QC Failed'
+        case 'PAID': return 'Paid'
+        case 'REVERSED': return 'Reversed'
+        default: return status
+    }
+}
 
-    // Task Creation Context
-    const [rateCard, setRateCard] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [taskTypes, setTaskTypes] = useState([]);
-    const [tailors, setTailors] = useState([]);
+export default function ManageItemTasks() {
+    const params = useParams()
+    const itemId = params.itemId as string
+    const router = useRouter()
+    const supabase = createClient()
 
-    // Form State
-    const [showAssignForm, setShowAssignForm] = useState(false);
-    const [newTask, setNewTask] = useState({
-        category_id: '',
-        task_type_id: '',
-        tailor_id: '',
-    });
+    const [item, setItem] = useState<any>(null)
+    const [assignments, setAssignments] = useState<any[]>([])
+    const [taskTypes, setTaskTypes] = useState<any[]>([])
+    const [tailors, setTailors] = useState<any[]>([])
+    const [rateCards, setRateCards] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [showForm, setShowForm] = useState(false)
+    const [actionError, setActionError] = useState('')
 
-    useEffect(() => {
-        loadData();
-    }, [itemId]);
+    const [newAssignment, setNewAssignment] = useState({
+        taskTypeId: '',
+        tailorId: '',
+    })
 
-    const loadData = async () => {
-        setLoading(true);
-        const [i, allItems] = await Promise.all([
-            db.getItems().then(items => items.find(x => x.id === itemId)),
-            db.getItems() // Re-fetch to be safe if `getItems` signature changes, but here we used `find` on array.
-            // Actually db.getItems returns all enriched, so the first call is enough.
-        ]);
+    const loadData = useCallback(async () => {
+        setLoading(true)
 
-        // Safety check if item not found
-        if (!i) {
-            alert("Item not found");
-            router.push('/qc');
-            return;
+        const { data: itemData, error: itemErr } = await supabase
+            .from('items')
+            .select(`id, item_key, status, product_type_id, tickets(ticket_number), product_types(name)`)
+            .eq('id', itemId)
+            .single()
+
+        if (itemErr || !itemData) {
+            alert('Item not found')
+            router.push('/qc')
+            return
         }
 
-        setItem(i);
+        setItem(itemData)
 
-        const [t, rc, cat, tt, tail] = await Promise.all([
-            db.getTasksByItemId(itemId),
-            db.getRateCard(),
-            db.getCategories(),
-            db.getTaskTypes(),
-            db.getTailors()
-        ]);
+        const [
+            { data: assignmentData },
+            { data: taskTypeData },
+            { data: tailorData },
+            { data: rateCardData },
+        ] = await Promise.all([
+            supabase
+                .from('work_assignments')
+                .select(`id, status, pay_amount, pay_band_snapshot, qc_notes, task_types(name), tailors(name, band)`)
+                .eq('item_id', itemId),
+            supabase.from('task_types').select('id, name').order('name'),
+            supabase.from('tailors').select('id, name, band').eq('active', true).order('name'),
+            supabase
+                .from('rate_cards')
+                .select('id, task_type_id, band_a_fee, band_b_fee')
+                .eq('product_type_id', itemData.product_type_id),
+        ])
 
-        // Enrich tasks
-        const enrichedTasks = t.map(task => {
-            const tailor = tail.find(x => x.id === task.tailor_id);
-            const catObj = cat.find(x => x.id === task.category_id);
-            const ttObj = tt.find(x => x.id === task.task_type_id);
-            return { ...task, tailor_name: tailor?.name, category_name: catObj?.name, task_type_name: ttObj?.name };
-        });
+        setAssignments(assignmentData ?? [])
+        // Only show task types that have a rate card for this product type
+        const availableTaskTypeIds = new Set((rateCardData ?? []).map((r: any) => r.task_type_id))
+        setTaskTypes((taskTypeData ?? []).filter((t: any) => availableTaskTypeIds.has(t.id)))
+        setTailors(tailorData ?? [])
+        setRateCards(rateCardData ?? [])
+        setLoading(false)
+    }, [itemId])
 
-        setTasks(enrichedTasks);
-        setRateCard(rc);
-        setCategories(cat);
-        setTaskTypes(tt);
-        setTailors(tail);
-        setLoading(false);
-    };
+    useEffect(() => { loadData() }, [loadData])
 
-    // --- Derived Dropdown Options ---
+    // Rate preview for assignment form
+    const selectedRate = rateCards.find(r => r.task_type_id === newAssignment.taskTypeId)
+    const selectedTailor = tailors.find(t => t.id === newAssignment.tailorId)
+    const previewPay = selectedRate && selectedTailor
+        ? selectedTailor.band === 'B' ? selectedRate.band_b_fee : selectedRate.band_a_fee
+        : null
 
-    // 1. Available Categories: Only those present in RateCard for this Product Type
-    const availableCategories = categories.filter(c =>
-        rateCard.some(r => r.product_type_id === item?.product_type_id && r.category_id === c.id)
-    );
-
-    // 2. Available Task Types: Filter by Product Type AND Selected Category
-    const availableTaskTypes = taskTypes.filter(tt =>
-        tt.product_type_id === item?.product_type_id &&
-        tt.category_id === newTask.category_id
-    );
-
-    // --- Rate Calculation for Display ---
-    const selectedRate = rateCard.find(r =>
-        r.product_type_id === item?.product_type_id &&
-        r.category_id === newTask.category_id &&
-        r.task_type_id === newTask.task_type_id
-    );
-
-    const selectedTailor = tailors.find(t => t.id === newTask.tailor_id);
-
-    const tailorBand = selectedTailor ? (selectedTailor.band || 'A') : 'A';
-
-    let calculatedPay = '0.00';
-    if (selectedRate && selectedTailor) {
-        calculatedPay = tailorBand === 'B' ? selectedRate.band_b_fee.toFixed(2) : selectedRate.band_a_fee.toFixed(2);
+    const handleAssign = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setActionError('')
+        try {
+            await createWorkAssignmentAction(itemId, newAssignment.taskTypeId, newAssignment.tailorId)
+            setShowForm(false)
+            setNewAssignment({ taskTypeId: '', tailorId: '' })
+            await loadData()
+        } catch (err: any) {
+            setActionError(err.message)
+        }
     }
 
-
-    const handleCreateTask = async (e) => {
-        e.preventDefault();
-        if (!selectedRate) {
-            alert("Invalid Rate Configuration");
-            return;
-        }
-
+    const handleQCPass = async (assignmentId: string) => {
         try {
-            await db.createTask({
-                item_id: item.id,
-                product_type_id: item.product_type_id, // Needed for backend verify
-                category_id: newTask.category_id,
-                task_type_id: newTask.task_type_id,
-                tailor_id: newTask.tailor_id
-            });
-            setShowAssignForm(false);
-            loadData(); // Refresh
-        } catch (err) {
-            alert(err.message);
+            await qcPassAction(assignmentId)
+            await loadData()
+        } catch (err: any) {
+            alert(err.message)
         }
-    };
+    }
 
-    if (loading || !item) return <div>Loading...</div>;
-
-    const handleClose = () => {
-        if (onClose) {
-            onClose();
-        } else {
-            router.push('/qc');
+    const handleQCFail = async (assignmentId: string) => {
+        const notes = window.prompt('Enter QC failure notes (required):')
+        if (!notes?.trim()) return
+        try {
+            await qcFailAction(assignmentId, notes)
+            await loadData()
+        } catch (err: any) {
+            alert(err.message)
         }
-    };
+    }
+
+    if (loading || !item) return <div className="p-8 text-gray-500 text-sm">Loading…</div>
 
     return (
         <div className="space-y-6">
-            {!onClose && (
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="sm" onClick={handleClose}>
-                        <ArrowLeft size={16} className="mr-2" /> Back to Queue
-                    </Button>
-                </div>
-            )}
+            <div className="flex items-center gap-4">
+                <Button variant="ghost" size="sm" onClick={() => router.push('/qc')}>
+                    <ArrowLeft size={16} className="mr-2" /> Back to Queue
+                </Button>
+            </div>
 
-            {/* Item Header */}
+            {/* Item header */}
             <div className="flex justify-between items-start">
                 <div>
                     <h1 className="text-xl font-serif text-maison-primary flex items-center gap-3">
                         {item.item_key}
-                        <Badge variant="neutral">{item.product_type_name}</Badge>
+                        <Badge variant="neutral">{(item.product_types as any)?.name}</Badge>
                     </h1>
                     <p className="text-sm text-maison-secondary mt-1">
-                        Ticket: {item.ticket_id} | Customer: {item.customer_name}
+                        Ticket: {(item.tickets as any)?.ticket_number ?? '—'}
                     </p>
                 </div>
-                <Button onClick={() => setShowAssignForm(!showAssignForm)}>
+                <Button onClick={() => setShowForm(!showForm)}>
                     <Plus size={16} className="mr-2" /> Assign Task
                 </Button>
             </div>
 
-            {showAssignForm && (
+            {/* Assignment form */}
+            {showForm && (
                 <Card className="border-maison-accent/20 bg-maison-accent/5">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-medium text-maison-primary">Assign New Task</h3>
-                    </div>
+                    <h3 className="font-medium text-maison-primary mb-4">Assign New Task</h3>
 
-                    {availableCategories.length === 0 ? (
-                        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm mb-4">
-                            <strong>No tasks available.</strong> There are currently no Rate Cards configured for this Product Type ({item.product_type_name}). Please go to <strong>Settings &gt; Task Types & Rates</strong> to configure them first.
+                    {taskTypes.length === 0 ? (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+                            <strong>No tasks available.</strong> No rate cards are configured for{' '}
+                            <strong>{(item.product_types as any)?.name}</strong>. Configure them in{' '}
+                            <strong>Rates</strong> first.
                         </div>
                     ) : (
-                        <form onSubmit={handleCreateTask} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-maison-secondary mb-1.5">Category</label>
-                                    <select
-                                        className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                                        value={newTask.category_id}
-                                        onChange={e => setNewTask({ ...newTask, category_id: e.target.value, task_type_id: '' })}
-                                        required
-                                    >
-                                        <option value="">Select Category...</option>
-                                        {availableCategories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
+                        <form onSubmit={handleAssign} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-maison-secondary mb-1.5">Task Type</label>
                                     <select
-                                        className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                                        value={newTask.task_type_id}
-                                        onChange={e => setNewTask({ ...newTask, task_type_id: e.target.value })}
                                         required
-                                        disabled={!newTask.category_id}
+                                        value={newAssignment.taskTypeId}
+                                        onChange={e => setNewAssignment(p => ({ ...p, taskTypeId: e.target.value }))}
+                                        className="block w-full rounded-lg border border-gray-200 text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
                                     >
-                                        <option value="">Select Task...</option>
-                                        {availableTaskTypes.map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
+                                        <option value="">Select Task…</option>
+                                        {taskTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </select>
                                 </div>
-
                                 <div>
                                     <label className="block text-sm font-medium text-maison-secondary mb-1.5">Tailor</label>
                                     <select
-                                        className="block w-full rounded-lg border-gray-200 shadow-sm sm:text-sm py-2.5"
-                                        value={newTask.tailor_id}
-                                        onChange={e => setNewTask({ ...newTask, tailor_id: e.target.value })}
                                         required
+                                        value={newAssignment.tailorId}
+                                        onChange={e => setNewAssignment(p => ({ ...p, tailorId: e.target.value }))}
+                                        className="block w-full rounded-lg border border-gray-200 text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
                                     >
-                                        <option value="">Select Tailor...</option>
-                                        {tailors.filter(t => t.active).map(t => {
-                                            const band = t.band || 'A';
-                                            return (
-                                                <option key={t.id} value={t.id}>{t.name} (Band {band})</option>
-                                            );
-                                        })}
+                                        <option value="">Select Tailor…</option>
+                                        {tailors.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name} (Band {t.band})</option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
 
-                            {/* Summary Box */}
-                            <div className="bg-white p-4 rounded-lg border border-gray-100 mt-4 shadow-sm">
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-gray-500">Pay Band:</span>
-                                    <span className="font-medium">
-                                        Band {tailorBand}
-                                    </span>
+                            {previewPay !== null && (
+                                <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-500">Pay Band:</span>
+                                        <span className="font-medium">Band {selectedTailor?.band}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm font-bold text-maison-primary pt-2 border-t border-gray-100 mt-2">
+                                        <span>Estimated Pay:</span>
+                                        <span>₦{Number(previewPay).toFixed(2)}</span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between text-sm font-bold text-maison-primary pt-2 border-t border-gray-100 mt-2">
-                                    <span>Total Pay:</span>
-                                    <span>₦{calculatedPay}</span>
-                                </div>
-                            </div>
+                            )}
 
-                            <div className="pt-2 flex justify-end gap-3">
-                                <Button type="button" variant="ghost" onClick={() => setShowAssignForm(false)}>Cancel</Button>
+                            {actionError && (
+                                <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-2">{actionError}</p>
+                            )}
+
+                            <div className="flex justify-end gap-3">
+                                <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setActionError('') }}>Cancel</Button>
                                 <Button type="submit">Assign Task</Button>
                             </div>
                         </form>
@@ -252,33 +234,63 @@ export default function ManageItemTasks({ itemId: propItemId, onClose }) {
                 </Card>
             )}
 
+            {/* Assignments table */}
             <Card padding="p-0">
-                <Table headers={['Category', 'Task', 'Tailor', 'Est. Pay', 'Status', 'Verified By']}>
-                    {tasks.map(task => (
-                        <TableRow key={task.id}>
-                            <TableCell>{task.category_name}</TableCell>
-                            <TableCell className="font-medium">{task.task_type_name}</TableCell>
-                            <TableCell>{task.tailor_name}</TableCell>
-                            <TableCell>₦{parseFloat(task.tailor_pay).toFixed(2)}</TableCell>
+                <Table headers={['Task Type', 'Tailor', 'Band', 'Pay', 'Status', 'Notes', 'QC Actions']}>
+                    {assignments.map(a => (
+                        <TableRow key={a.id}>
+                            <TableCell className="font-medium">{(a.task_types as any)?.name}</TableCell>
+                            <TableCell>{(a.tailors as any)?.name}</TableCell>
+                            <TableCell>Band {a.pay_band_snapshot}</TableCell>
+                            <TableCell>₦{Number(a.pay_amount).toFixed(2)}</TableCell>
                             <TableCell>
-                                <Badge variant={task.verification_status === 'Approved' ? 'success' : task.verification_status === 'Rejected' ? 'danger' : 'warning'}>
-                                    {task.verification_status}
+                                <Badge variant={assignmentStatusVariant(a.status) as any}>
+                                    {assignmentStatusLabel(a.status)}
                                 </Badge>
                             </TableCell>
-                            <TableCell className="text-gray-400 text-xs">
-                                {task.verified_by_role || '-'}
+                            <TableCell className="text-gray-400 text-xs max-w-[160px] truncate">
+                                {a.qc_notes ?? '—'}
+                            </TableCell>
+                            <TableCell>
+                                {a.status === 'CREATED' && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleQCPass(a.id)}
+                                            title="Pass QC"
+                                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                                        >
+                                            <CheckCircle2 size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleQCFail(a.id)}
+                                            title="Fail QC"
+                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
+                                        >
+                                            <XCircle size={18} />
+                                        </button>
+                                    </div>
+                                )}
+                                {a.status === 'QC_FAILED' && (
+                                    <button
+                                        onClick={() => handleQCPass(a.id)}
+                                        title="Re-pass QC"
+                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                                    >
+                                        <CheckCircle2 size={18} />
+                                    </button>
+                                )}
                             </TableCell>
                         </TableRow>
                     ))}
-                    {tasks.length === 0 && (
+                    {assignments.length === 0 && (
                         <tr>
-                            <td colSpan="6" className="px-6 py-8 text-center text-gray-500 text-sm">
+                            <td colSpan={7} className="px-6 py-8 text-center text-gray-500 text-sm">
                                 No tasks assigned yet.
                             </td>
                         </tr>
                     )}
                 </Table>
             </Card>
-        </div >
-    );
+        </div>
+    )
 }

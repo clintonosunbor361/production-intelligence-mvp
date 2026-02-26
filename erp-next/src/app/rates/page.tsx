@@ -1,243 +1,192 @@
-// @ts-nocheck
-"use client";
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { db } from '@/services/db';
-import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
-import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { Modal } from '@/components/UI/Modal';
-import { Input } from '@/components/UI/Input';
-import { CSVImporter } from '@/components/Shared/CSVImporter';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Card } from '@/components/UI/Card'
+import { Button } from '@/components/UI/Button'
+import { Table, TableRow, TableCell } from '@/components/UI/Table'
+import { Modal } from '@/components/UI/Modal'
+import { Input } from '@/components/UI/Input'
+import { Plus, Edit2 } from 'lucide-react'
+import { upsertRateCardAction } from '@/app/actions/spine'
 
-export default function ManageTaskTypes() {
-    const [tasks, setTasks] = useState([]);
-    const [productTypes, setProductTypes] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [rates, setRates] = useState([]);
+export default function ManageRates() {
+    const supabase = createClient()
 
-    const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
+    const [rates, setRates] = useState<any[]>([])
+    const [productTypes, setProductTypes] = useState<any[]>([])
+    const [taskTypes, setTaskTypes] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [modalOpen, setModalOpen] = useState(false)
+    const [editing, setEditing] = useState<any>(null)
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState('')
 
-    const [formData, setFormData] = useState({
-        product_type_id: '',
-        category_id: '',
-        name: '',
-        band_a_fee: '',
-        band_b_fee: ''
-    });
+    const [form, setForm] = useState({
+        taskTypeId: '',
+        productTypeId: '',
+        bandAFee: '',
+        bandBFee: '',
+    })
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    const load = useCallback(async () => {
+        const [{ data: r }, { data: pt }, { data: tt }] = await Promise.all([
+            supabase
+                .from('rate_cards')
+                .select(`id, band_a_fee, band_b_fee, task_types(id, name), product_types(id, name)`)
+                .order('created_at', { ascending: false }),
+            supabase.from('product_types').select('id, name').order('name'),
+            supabase.from('task_types').select('id, name').order('name'),
+        ])
+        setRates(r ?? [])
+        setProductTypes(pt ?? [])
+        setTaskTypes(tt ?? [])
+        setLoading(false)
+    }, [])
 
-    const loadData = async () => {
-        setLoading(true);
-        const [t, pt, cat, r] = await Promise.all([
-            db.getTaskTypes(),
-            db.getProductTypes(),
-            db.getCategories(),
-            db.getRateCard()
-        ]);
+    useEffect(() => { load() }, [load])
 
-        // Merge data for display
-        const enrichedTasks = t.map(task => {
-            const p = pt.find(x => x.id === task.product_type_id);
-            const c = cat.find(x => x.id === task.category_id);
-            const rate = r.find(x =>
-                x.task_type_id === task.id &&
-                x.product_type_id === task.product_type_id &&
-                x.category_id === task.category_id
-            );
-
-            return {
-                ...task,
-                product_name: p ? p.name : 'Unknown',
-                category_name: c ? c.name : 'Unknown',
-                band_a_fee: rate ? rate.band_a_fee : 0,
-                band_b_fee: rate ? rate.band_b_fee : 0
-            };
-        });
-
-        setTasks(enrichedTasks);
-        setProductTypes(pt);
-        setCategories(cat);
-        setRates(r);
-        setLoading(false);
-    };
-
-    const handleOpenModal = (item = null) => {
-        if (item) {
-            setEditingItem(item);
-            setFormData({
-                product_type_id: item.product_type_id,
-                category_id: item.category_id,
-                name: item.name,
-                band_a_fee: item.band_a_fee,
-                band_b_fee: item.band_b_fee
-            });
+    const openModal = (rate?: any) => {
+        if (rate) {
+            setEditing(rate)
+            setForm({
+                taskTypeId: (rate.task_types as any)?.id ?? '',
+                productTypeId: (rate.product_types as any)?.id ?? '',
+                bandAFee: String(rate.band_a_fee),
+                bandBFee: String(rate.band_b_fee),
+            })
         } else {
-            setEditingItem(null);
-            setFormData({
-                product_type_id: productTypes[0]?.id || '',
-                category_id: categories[0]?.id || '',
-                name: '',
-                band_a_fee: '',
-                band_b_fee: ''
-            });
+            setEditing(null)
+            setForm({
+                taskTypeId: taskTypes[0]?.id ?? '',
+                productTypeId: productTypes[0]?.id ?? '',
+                bandAFee: '',
+                bandBFee: '',
+            })
         }
-        setIsModalOpen(true);
-    };
+        setError('')
+        setModalOpen(true)
+    }
 
-    const handleSave = async (e) => {
-        e.preventDefault();
-        console.log("Saving Task Type & Rate:", formData);
-        setIsModalOpen(false);
-        alert("Master Data writes are read-only in this demo version.");
-    };
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setError('')
+        setSaving(true)
+        try {
+            await upsertRateCardAction({
+                taskTypeId: form.taskTypeId,
+                productTypeId: form.productTypeId,
+                bandAFee: parseFloat(form.bandAFee),
+                bandBFee: parseFloat(form.bandBFee),
+                id: editing?.id,
+            })
+            setModalOpen(false)
+            await load()
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setSaving(false)
+        }
+    }
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-serif text-maison-primary">Task Rates</h1>
-                    <p className="text-sm text-maison-secondary">Configure tasks and base fees per product/category</p>
+                    <h1 className="text-2xl font-serif text-maison-primary">Rate Cards</h1>
+                    <p className="text-sm text-maison-secondary">Base fees per task type and product — Band A (Standard) and Band B (Senior)</p>
                 </div>
-                <div className="flex gap-3">
-                    <CSVImporter
-                        onImport={async (data) => {
-                            let count = 0;
-                            setLoading(true);
-                            for (const row of data) {
-                                // Product, Category, Task Name, Band A Fee, Band B Fee
-                                const productName = row.Product;
-                                const categoryName = row.Category;
-                                const taskName = row['Task Name'];
-                                const bandAFee = row['Band A Fee'] || row['Base Fee'];
-                                const bandBFee = row['Band B Fee'] || bandAFee;
-
-                                if (productName && categoryName && taskName && bandAFee) {
-                                    await db.createTaskAndRate(productName, categoryName, taskName, bandAFee, bandBFee);
-                                    count++;
-                                }
-                            }
-                            await loadData();
-                            alert(`Imported ${count} task rates.`);
-                        }}
-                    />
-                    <Button onClick={() => handleOpenModal()}>
-                        <Plus size={16} className="mr-2" />
-                        Add Task Type
-                    </Button>
-                </div>
+                <Button onClick={() => openModal()}>
+                    <Plus size={16} className="mr-2" /> Add Rate
+                </Button>
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Product', 'Category', 'Task Name', 'Band A Fee', 'Band B Fee', 'Status', 'Actions']}>
-                    {tasks.map((item) => (
-                        <TableRow key={item.id}>
-                            <TableCell>{item.product_name}</TableCell>
-                            <TableCell>{item.category_name}</TableCell>
-                            <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>₦{parseFloat(item.band_a_fee).toFixed(2)}</TableCell>
-                            <TableCell>₦{parseFloat(item.band_b_fee).toFixed(2)}</TableCell>
+                <Table headers={['Task Type', 'Product Type', 'Band A Fee', 'Band B Fee', 'Actions']}>
+                    {rates.map(rate => (
+                        <TableRow key={rate.id}>
+                            <TableCell className="font-medium">{(rate.task_types as any)?.name}</TableCell>
+                            <TableCell>{(rate.product_types as any)?.name}</TableCell>
+                            <TableCell className="font-mono">₦{Number(rate.band_a_fee).toFixed(2)}</TableCell>
+                            <TableCell className="font-mono">₦{Number(rate.band_b_fee).toFixed(2)}</TableCell>
                             <TableCell>
-                                <Badge variant={item.active ? 'success' : 'neutral'}>
-                                    {item.active ? 'Active' : 'Inactive'}
-                                </Badge>
-                            </TableCell>
-                            <TableCell>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleOpenModal(item)}
-                                        className="p-1 text-gray-400 hover:text-maison-primary transition-colors"
-                                    >
-                                        <Edit2 size={16} />
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={() => openModal(rate)}
+                                    className="p-1.5 text-gray-400 hover:text-maison-primary hover:bg-gray-100 rounded transition-colors"
+                                    title="Edit"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
                             </TableCell>
                         </TableRow>
                     ))}
+                    {rates.length === 0 && !loading && (
+                        <tr>
+                            <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">
+                                No rate cards yet. Add task types and product types first.
+                            </td>
+                        </tr>
+                    )}
                 </Table>
             </Card>
 
-            <Modal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title={editingItem ? 'Edit Task Rate' : 'Add Task Rate'}
-            >
+            <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Rate' : 'Add Rate'}>
                 <form onSubmit={handleSave} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Task Type</label>
+                        <select
+                            required
+                            disabled={!!editing}
+                            value={form.taskTypeId}
+                            onChange={e => setForm(p => ({ ...p, taskTypeId: e.target.value }))}
+                            className="block w-full rounded-lg border border-gray-200 text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white disabled:bg-gray-50"
+                        >
+                            <option value="">Select Task Type…</option>
+                            {taskTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                    </div>
                     <div>
                         <label className="block text-sm font-medium text-maison-secondary mb-1.5">Product Type</label>
                         <select
-                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
-                            value={formData.product_type_id}
-                            onChange={(e) => setFormData({ ...formData, product_type_id: e.target.value })}
-                            disabled={!!editingItem} // Lock context on edit
+                            required
+                            disabled={!!editing}
+                            value={form.productTypeId}
+                            onChange={e => setForm(p => ({ ...p, productTypeId: e.target.value }))}
+                            className="block w-full rounded-lg border border-gray-200 text-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white disabled:bg-gray-50"
                         >
-                            {productTypes.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
+                            <option value="">Select Product Type…</option>
+                            {productTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Category</label>
-                        <select
-                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
-                            value={formData.category_id}
-                            onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                            disabled={!!editingItem} // Lock context on edit
-                        >
-                            {categories.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <Input
-                        label="Task Name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. Sleeve Amendment"
-                        required
-                    />
-
                     <div className="grid grid-cols-2 gap-4">
                         <Input
                             label="Band A Fee (₦)"
                             type="number"
-                            value={formData.band_a_fee}
-                            onChange={(e) => setFormData({ ...formData, band_a_fee: e.target.value })}
-                            placeholder="50.00"
-                            required
                             min="0"
                             step="0.01"
+                            required
+                            value={form.bandAFee}
+                            onChange={(e: any) => setForm(p => ({ ...p, bandAFee: e.target.value }))}
+                            placeholder="e.g. 2500.00"
                         />
                         <Input
                             label="Band B Fee (₦)"
                             type="number"
-                            value={formData.band_b_fee}
-                            onChange={(e) => setFormData({ ...formData, band_b_fee: e.target.value })}
-                            placeholder="60.00"
-                            required
                             min="0"
                             step="0.01"
+                            required
+                            value={form.bandBFee}
+                            onChange={(e: any) => setForm(p => ({ ...p, bandBFee: e.target.value }))}
+                            placeholder="e.g. 3000.00"
                         />
                     </div>
-
-                    <div className="pt-4 flex justify-end gap-3">
-                        <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">
-                            {editingItem ? 'Update' : 'Create'}
-                        </Button>
+                    {error && <p className="text-sm text-red-600">{error}</p>}
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
                     </div>
                 </form>
             </Modal>
         </div>
-    );
+    )
 }

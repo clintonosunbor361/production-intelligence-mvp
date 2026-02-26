@@ -1,179 +1,145 @@
-// @ts-nocheck
-"use client";
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { db } from '@/services/db';
-import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
-import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { PackageCheck, ChevronDown, ChevronRight, Search, FilterX } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import React, { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Card } from '@/components/UI/Card'
+import { Button } from '@/components/UI/Button'
+import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table'
+import { PackageCheck, ChevronDown, ChevronRight, Search, FilterX } from 'lucide-react'
+import { format, startOfDay, endOfDay } from 'date-fns'
+import { completeItemAction } from '@/app/actions/spine'
 
 export default function Receiving() {
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    // Maintain the default 'Available' filter state by pre-setting status to 'Assigned by QC'
+    const supabase = createClient()
+
+    const [items, setItems] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
     const [filters, setFilters] = useState({
-        ticketId: '',
-        customerName: '',
-        productType: '',
-        status: '', // Default to All Statuses
-        startDate: '',
-        endDate: ''
-    });
-    const [expandedGroups, setExpandedGroups] = useState({});
+        ticketNumber: '', productType: '', startDate: '', endDate: '',
+    })
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
 
-    useEffect(() => {
-        loadItems();
-    }, []);
+    const loadItems = useCallback(async () => {
+        setLoading(true)
+        const { data } = await supabase
+            .from('items')
+            .select(`
+                id, item_key, status, created_at, product_type_id,
+                tickets (id, ticket_number),
+                product_types (name),
+                work_assignments (status)
+            `)
+            .neq('status', 'CANCELLED')
+            .order('created_at', { ascending: false })
 
-    const loadItems = async () => {
-        setLoading(true);
-        const data = await db.getItems();
-        setItems(data.filter(i => i.status !== 'Cancelled'));
-        setLoading(false);
-    };
+        setItems(data ?? [])
+        setLoading(false)
+    }, [])
 
-    const uniqueProductTypes = [...new Set(items.map(i => i.product_type_name))].filter(Boolean);
-    // Ensure 'Assigned by QC' is an option even if no items currently have that status
-    const uniqueStatuses = [...new Set([...items.map(i => i.status), 'Assigned by QC', 'Received'])].filter(Boolean);
+    useEffect(() => { loadItems() }, [loadItems])
 
-    const filteredItems = items.filter(item => {
-        let match = true;
-
-        if (filters.ticketId && !item.ticket_id?.toLowerCase().includes(filters.ticketId.toLowerCase())) match = false;
-        if (filters.customerName && !item.customer_name?.toLowerCase().includes(filters.customerName.toLowerCase())) match = false;
-        if (filters.productType && item.product_type_name !== filters.productType) match = false;
-        if (filters.status && item.status !== filters.status) match = false;
-
-        if (filters.startDate || filters.endDate) {
-            const itemDate = new Date(item.created_at);
-            if (filters.startDate && itemDate < startOfDay(new Date(filters.startDate))) match = false;
-            if (filters.endDate && itemDate > endOfDay(new Date(filters.endDate))) match = false;
+    const handleComplete = async (itemId: string) => {
+        if (!window.confirm('Mark this item as Completed and received into stock?')) return
+        try {
+            await completeItemAction(itemId)
+            await loadItems()
+        } catch (err: any) {
+            alert(err.message)
         }
+    }
 
-        return match;
-    });
+    const allProductTypes = [...new Set(items.map(i => (i.product_types as any)?.name).filter(Boolean))]
 
-    // Group items by ticket_id
-    const groupedItems = filteredItems.reduce((acc, item) => {
-        if (!acc[item.ticket_id]) {
-            acc[item.ticket_id] = {
-                ticket_id: item.ticket_id,
-                customer_name: item.customer_name,
-                items: []
-            };
-        }
-        acc[item.ticket_id].items.push(item);
-        return acc;
-    }, {});
+    const filtered = items.filter(item => {
+        const ticket = item.tickets as any
+        const pt = (item.product_types as any)?.name ?? ''
+        if (filters.ticketNumber && !ticket?.ticket_number?.toLowerCase().includes(filters.ticketNumber.toLowerCase())) return false
+        if (filters.productType && pt !== filters.productType) return false
+        if (filters.startDate && new Date(item.created_at) < startOfDay(new Date(filters.startDate))) return false
+        if (filters.endDate && new Date(item.created_at) > endOfDay(new Date(filters.endDate))) return false
+        return true
+    })
 
-    const toggleGroup = (ticketId) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [ticketId]: !prev[ticketId]
-        }));
-    };
+    const grouped = filtered.reduce<Record<string, any>>((acc, item) => {
+        const ticket = item.tickets as any
+        const key = ticket?.id ?? 'unknown'
+        if (!acc[key]) acc[key] = { ticket_id: key, ticket_number: ticket?.ticket_number ?? '—', items: [] }
+        acc[key].items.push(item)
+        return acc
+    }, {})
 
-    const handleReceive = async (itemId) => {
-        if (!window.confirm("Mark item as Physically Received?")) return;
-        await db.updateItemStatus(itemId, 'Received');
-        loadItems();
-    };
+    const canComplete = (item: any) => {
+        // All assignments must be QC_PASSED (or no assignments yet)
+        const assignments = (item.work_assignments as any[]) ?? []
+        return item.status === 'IN_PROGRESS' &&
+            (assignments.length === 0 || assignments.every((a: any) => ['QC_PASSED', 'PAID'].includes(a.status)))
+    }
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-serif text-maison-primary">Completion & Receiving</h1>
-                    <p className="text-sm text-maison-secondary">Mark items as finished and received into stock</p>
-                </div>
+            <div>
+                <h1 className="text-2xl font-serif text-maison-primary">Completion & Receiving</h1>
+                <p className="text-sm text-maison-secondary">Mark QC-passed items as completed and received into stock</p>
             </div>
 
+            {/* Filters */}
             <Card className="pb-4">
                 <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-end">
                     <div className="flex-1 min-w-[150px]">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ticket ID</label>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ticket No.</label>
                         <div className="relative">
                             <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
                             <input
-                                type="text"
-                                placeholder="..."
-                                value={filters.ticketId}
-                                onChange={(e) => setFilters(prev => ({ ...prev, ticketId: e.target.value }))}
+                                type="text" placeholder="..."
+                                value={filters.ticketNumber}
+                                onChange={(e) => setFilters(p => ({ ...p, ticketNumber: e.target.value }))}
                                 className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
                             />
                         </div>
-                    </div>
-                    <div className="flex-1 min-w-[150px]">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Customer</label>
-                        <input
-                            type="text"
-                            placeholder="Search name..."
-                            value={filters.customerName}
-                            onChange={(e) => setFilters(prev => ({ ...prev, customerName: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20"
-                        />
                     </div>
                     <div className="w-full sm:w-auto min-w-[140px]">
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Product Type</label>
                         <select
                             value={filters.productType}
-                            onChange={(e) => setFilters(prev => ({ ...prev, productType: e.target.value }))}
+                            onChange={(e) => setFilters(p => ({ ...p, productType: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
                         >
                             <option value="">All Products</option>
-                            {uniqueProductTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}
-                        </select>
-                    </div>
-                    <div className="w-full sm:w-auto min-w-[130px]">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
-                        <select
-                            value={filters.status}
-                            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
-                        >
-                            <option value="">All Statuses</option>
-                            {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                            {allProductTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}
                         </select>
                     </div>
                     <div className="w-full sm:w-auto">
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Date Range</label>
                         <div className="flex items-center gap-2">
-                            <input
-                                type="date"
-                                value={filters.startDate}
-                                onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                            <input type="date" value={filters.startDate}
+                                onChange={(e) => setFilters(p => ({ ...p, startDate: e.target.value }))}
                                 className="px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
                             />
                             <span className="text-gray-400">-</span>
-                            <input
-                                type="date"
-                                value={filters.endDate}
-                                onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                            <input type="date" value={filters.endDate}
+                                onChange={(e) => setFilters(p => ({ ...p, endDate: e.target.value }))}
                                 className="px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-maison-primary/20 bg-white"
                             />
                         </div>
                     </div>
-                    <Button
-                        variant="ghost"
-                        onClick={() => setFilters({ ticketId: '', customerName: '', productType: '', status: 'Assigned by QC', startDate: '', endDate: '' })}
-                        className="text-gray-500 hover:text-gray-700 bg-gray-50 px-3"
-                        title="Clear Filters"
+                    <Button variant="ghost"
+                        onClick={() => setFilters({ ticketNumber: '', productType: '', startDate: '', endDate: '' })}
+                        className="text-gray-500 bg-gray-50 px-3"
                     >
                         <FilterX size={16} />
                     </Button>
                 </div>
             </Card>
 
+            {/* Accordion list */}
             <div className="space-y-4">
-                {Object.values(groupedItems).map((group) => {
-                    const isExpanded = expandedGroups[group.ticket_id];
+                {Object.values(grouped).map((group: any) => {
+                    const isExpanded = expandedGroups[group.ticket_id]
+                    const completedCount = group.items.filter((i: any) => i.status === 'COMPLETED').length
                     return (
                         <Card key={group.ticket_id} padding="p-0" className="overflow-hidden border border-gray-200">
-                            {/* Accordion Header */}
                             <div
-                                onClick={() => toggleGroup(group.ticket_id)}
+                                onClick={() => setExpandedGroups(p => ({ ...p, [group.ticket_id]: !p[group.ticket_id] }))}
                                 className={`flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}
                             >
                                 <div className="flex items-center gap-3 w-full">
@@ -181,71 +147,66 @@ export default function Receiving() {
                                         {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                                     </div>
                                     <div className="flex-1 flex items-center justify-between">
+                                        <span className="font-mono text-sm font-medium text-gray-700">{group.ticket_number}</span>
                                         <div className="flex items-center gap-4">
-                                            <h3 className="font-serif font-medium text-lg text-maison-primary">
-                                                {group.customer_name}
-                                            </h3>
-                                            <span className="text-gray-300">|</span>
-                                            <span className="font-mono text-sm font-medium text-gray-500">
-                                                {group.ticket_id}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-sm text-maison-secondary">
-                                                {group.items.length} {group.items.length === 1 ? 'Product' : 'Products'} Total
-                                            </span>
-                                            <Badge variant={group.items.filter(i => i.status === 'Received').length === group.items.length ? 'success' : 'neutral'}>
-                                                {group.items.filter(i => i.status === 'Received').length} / {group.items.length} Completed
+                                            <span className="text-sm text-maison-secondary">{group.items.length} items</span>
+                                            <Badge variant={completedCount === group.items.length ? 'success' : 'neutral'}>
+                                                {completedCount} / {group.items.length} Completed
                                             </Badge>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Accordion Body */}
                             {isExpanded && (
                                 <div className="bg-white">
-                                    <Table headers={['Item Key', 'Product', 'Current Status', 'Action']}>
-                                        {group.items.map((item) => (
-                                            <TableRow key={item.id}>
-                                                <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
-                                                <TableCell>{item.product_type_name}</TableCell>
-                                                <TableCell>
-                                                    <Badge variant={item.status === 'Received' ? 'success' : 'brand'}>{item.status}</Badge>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {item.status !== 'Received' ? (
-                                                        <Button
-                                                            size="sm"
-                                                            className="bg-maison-primary"
-                                                            onClick={() => handleReceive(item.id)}
-                                                        >
-                                                            <PackageCheck size={16} className="mr-2" />
-                                                            Receive Item
-                                                        </Button>
-                                                    ) : (
-                                                        <span className="text-sm text-gray-500 italic flex items-center gap-1">
-                                                            <PackageCheck size={14} /> Received
-                                                        </span>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                    <Table headers={['Item Key', 'Product', 'Assignments', 'Status', 'Action']}>
+                                        {group.items.map((item: any) => {
+                                            const assignments = (item.work_assignments as any[]) ?? []
+                                            const passedCount = assignments.filter((a: any) => ['QC_PASSED', 'PAID'].includes(a.status)).length
+                                            return (
+                                                <TableRow key={item.id}>
+                                                    <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
+                                                    <TableCell>{(item.product_types as any)?.name}</TableCell>
+                                                    <TableCell className="text-sm text-gray-500">
+                                                        {passedCount}/{assignments.length} passed
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant={item.status === 'COMPLETED' ? 'success' : 'brand'}>
+                                                            {item.status === 'COMPLETED' ? 'Completed' : 'In Progress'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {item.status === 'IN_PROGRESS' ? (
+                                                            <Button
+                                                                size="sm"
+                                                                className="bg-maison-primary"
+                                                                onClick={() => handleComplete(item.id)}
+                                                                disabled={!canComplete(item)}
+                                                            >
+                                                                <PackageCheck size={16} className="mr-2" />
+                                                                Receive Item
+                                                            </Button>
+                                                        ) : (
+                                                            <span className="text-sm text-gray-500 italic flex items-center gap-1">
+                                                                <PackageCheck size={14} /> Received
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
                                     </Table>
                                 </div>
                             )}
                         </Card>
-                    );
+                    )
                 })}
-
-                {filteredItems.length === 0 && !loading && (
+                {filtered.length === 0 && !loading && (
                     <Card>
-                        <div className="py-12 text-center text-gray-500 text-sm">
-                            No items match the current filter.
-                        </div>
+                        <div className="py-12 text-center text-gray-500 text-sm">No items match the current filter.</div>
                     </Card>
                 )}
             </div>
         </div>
-    );
+    )
 }
