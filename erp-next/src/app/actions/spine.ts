@@ -6,7 +6,7 @@ import { hasPermission } from '@/lib/auth/permissions'
 // We wrap the DB RPC calls in Server Actions so the Next.js frontend can call them easily 
 // and securely, allowing the frontend to ignore DB mechanics entirely.
 
-export async function createWorkAssignmentAction(itemId: string, taskTypeId: string, tailorId: string) {
+export async function createWorkAssignmentAction(itemId: string, categoryTypeId: string, taskTypeId: string, tailorId: string) {
     // DB layer already enforces permissions inside the RPC!
     // But we can check here explicitly or let the DB do it. 
     // Let's rely on the DB RPC's internal SECURITY DEFINER + auth.has_permission checks,
@@ -16,6 +16,7 @@ export async function createWorkAssignmentAction(itemId: string, taskTypeId: str
 
     const { data, error } = await supabase.rpc('create_work_assignment', {
         p_item_id: itemId,
+        p_category_type_id: categoryTypeId,
         p_task_type_id: taskTypeId,
         p_tailor_id: tailorId
     })

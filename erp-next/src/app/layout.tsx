@@ -2,7 +2,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from './Providers';
-import { DashboardLayout } from '../components/Layout/DashboardLayout';
 
 export const metadata: Metadata = {
   title: 'Maison Couture ERP',
@@ -18,9 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <Providers>
-          <DashboardLayout>
-            {children}
-          </DashboardLayout>
+          {children}
         </Providers>
       </body>
     </html>

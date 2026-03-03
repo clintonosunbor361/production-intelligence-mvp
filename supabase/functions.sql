@@ -38,6 +38,7 @@ $$;
 -- 1) Create Work Assignment (computes snapshots)
 CREATE OR REPLACE FUNCTION public.create_work_assignment(
   p_item_id uuid,
+  p_category_type_id uuid,
   p_task_type_id uuid,
   p_tailor_id uuid
 ) RETURNS uuid
@@ -101,6 +102,7 @@ BEGIN
   INSERT INTO public.work_assignments (
     organization_id,
     item_id,
+    category_type_id,
     task_type_id,
     tailor_id,
     status,
@@ -110,6 +112,7 @@ BEGIN
   ) VALUES (
     v_org_id,
     p_item_id,
+    p_category_type_id,
     p_task_type_id,
     p_tailor_id,
     'CREATED',
@@ -117,6 +120,9 @@ BEGIN
     v_rate,
     v_rate
   )
+  ON CONFLICT (organization_id, item_id, category_type_id, task_type_id)
+  DO UPDATE SET
+    tailor_id = EXCLUDED.tailor_id
   RETURNING id INTO v_assignment_id;
 
   RETURN v_assignment_id;

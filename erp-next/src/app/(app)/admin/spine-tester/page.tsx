@@ -1,6 +1,7 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
     createWorkAssignmentAction,
     qcPassAction,
@@ -8,32 +9,44 @@ import {
     createPaymentBatchAction,
     reversePaymentAction,
     cancelItemAction,
-    cancelTicketAction
-} from '@/app/actions/spine';
+    cancelTicketAction,
+} from '../../../actions/spine'
 
 export default function SpineTester() {
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<any>(null);
+    const [loading, setLoading] = useState(false)
+    const [result, setResult] = useState<any>(null)
 
-    // Example placeholders (in a real test, you'd fetch or input real UUIDs)
-    const [itemId, setItemId] = useState('');
-    const [taskTypeId, setTaskTypeId] = useState('');
-    const [tailorId, setTailorId] = useState('');
-    const [assignmentId, setAssignmentId] = useState('');
-    const [notes, setNotes] = useState('');
+    const [itemId, setItemId] = useState('')
+    const [categoryTypeId, setCategoryTypeId] = useState('')
+    const [taskTypeId, setTaskTypeId] = useState('')
+    const [tailorId, setTailorId] = useState('')
+    const [assignmentId, setAssignmentId] = useState('')
+    const [notes, setNotes] = useState('')
+
+    // ✅ Debug: confirm you're logged in
+    useEffect(() => {
+        const supabase = createClient()
+        supabase.auth.getUser().then((authResponse) => {
+            const data = authResponse.data;
+            const error = authResponse.error;
+            console.log('Current User:', data.user)
+            if (error) console.error('getUser error:', error.message)
+            if (!data.user) console.warn('Not logged in (user is null)')
+        })
+    }, [])
 
     const handleAction = async (actionFn: () => Promise<any>) => {
-        setLoading(true);
-        setResult(null);
+        setLoading(true)
+        setResult(null)
         try {
-            const res = await actionFn();
-            setResult({ success: true, data: res });
+            const res = await actionFn()
+            setResult({ success: true, data: res })
         } catch (err: any) {
-            setResult({ success: false, error: err.message });
+            setResult({ success: false, error: err?.message ?? String(err) })
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     return (
         <div className="p-8 max-w-4xl mx-auto space-y-8 font-sans">
@@ -43,11 +56,11 @@ export default function SpineTester() {
                 Note: You need active UUIDs for items, task types, etc., and permission in Auth session.
             </p>
 
-            {/* Input Configuration */}
             <div className="bg-gray-100 p-4 rounded space-y-2">
                 <h2 className="font-semibold mb-2">Configure UUIDs</h2>
                 <div className="grid grid-cols-2 gap-4">
                     <input className="border p-1" placeholder="Item ID" value={itemId} onChange={(e) => setItemId(e.target.value)} />
+                    <input className="border p-1" placeholder="Category Type ID" value={categoryTypeId} onChange={(e) => setCategoryTypeId(e.target.value)} />
                     <input className="border p-1" placeholder="Task Type ID" value={taskTypeId} onChange={(e) => setTaskTypeId(e.target.value)} />
                     <input className="border p-1" placeholder="Tailor ID" value={tailorId} onChange={(e) => setTailorId(e.target.value)} />
                     <input className="border p-1" placeholder="Work Assignment ID" value={assignmentId} onChange={(e) => setAssignmentId(e.target.value)} />
@@ -57,8 +70,8 @@ export default function SpineTester() {
 
             <div className="grid grid-cols-2 gap-4">
                 <button
-                    onClick={() => handleAction(() => createWorkAssignmentAction(itemId, taskTypeId, tailorId))}
-                    disabled={loading || !itemId || !taskTypeId || !tailorId}
+                    onClick={() => handleAction(() => createWorkAssignmentAction(itemId, categoryTypeId, taskTypeId, tailorId))}
+                    disabled={loading || !itemId || !categoryTypeId || !taskTypeId || !tailorId}
                     className="bg-blue-600 text-white p-2 rounded disabled:opacity-50"
                 >
                     1. Create Assignment
@@ -110,7 +123,7 @@ export default function SpineTester() {
                 </button>
 
                 <button
-                    onClick={() => handleAction(() => cancelTicketAction(notes))} // Note acts as ticket_id here temporarily for tester
+                    onClick={() => handleAction(() => cancelTicketAction(notes))}
                     disabled={loading || !notes}
                     className="border-red-800 border text-red-800 p-2 rounded disabled:opacity-50 flex-1"
                 >
@@ -124,5 +137,5 @@ export default function SpineTester() {
                 </div>
             )}
         </div>
-    );
+    )
 }

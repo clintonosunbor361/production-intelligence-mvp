@@ -1,18 +1,18 @@
-import { createClient } from './server'
+import { createClient } from '../supabase/server'
 
 export async function getUserPermissions() {
-    const supabase = await createClient()
+  const supabase = await createClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-        return { user: null, permissions: [] }
-    }
+  if (authError || !user) {
+    return { user: null, permissions: [] as string[] }
+  }
 
-    // Get permissions from DB
-    const { data, error } = await supabase
-        .from('user_roles')
-        .select(`
+  // Get permissions from DB
+  const { data, error } = await supabase
+    .from('user_roles')
+    .select(`
       role_id,
       roles (
         role_permissions (
@@ -20,22 +20,22 @@ export async function getUserPermissions() {
         )
       )
     `)
-        .eq('user_id', user.id)
-        .single()
+    .eq('user_id', user.id)
+    .single()
 
-    if (error || !data || !data.roles) {
-        return { user, permissions: [] }
-    }
+  if (error || !data || !data.roles) {
+    return { user, permissions: [] as string[] }
+  }
 
-    // Define typing ad-hoc
-    type RolePermsRow = { permissions: { name: string } };
-    const rp = (data.roles as any).role_permissions as RolePermsRow[];
-    const permissions = rp.map(item => item.permissions.name);
+  // Define typing ad-hoc
+  type RolePermsRow = { permissions: { name: string } };
+  const rp = (data.roles as any).role_permissions as RolePermsRow[];
+  const permissions: string[] = rp.map(item => item.permissions.name);
 
-    return { user, permissions }
+  return { user, permissions }
 }
 
 export async function hasPermission(permissionName: string) {
-    const { permissions } = await getUserPermissions()
-    return permissions.includes(permissionName) || permissions.includes('admin')
+  const { permissions } = await getUserPermissions()
+  return permissions.includes(permissionName) || permissions.includes('admin')
 }

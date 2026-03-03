@@ -8,11 +8,13 @@ import { Button } from '@/components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
 import { CSVImporter } from '@/components/Shared/CSVImporter';
 import { Plus, Trash2, Search, FilterX, Clock, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
-import {  useRouter  } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { format, startOfDay, endOfDay } from 'date-fns';
+import { CreateItemModal } from '@/components/Production/CreateItemModal';
 
 export default function ItemList() {
     const router = useRouter();
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState({
@@ -140,7 +142,7 @@ export default function ItemList() {
                             alert(`Imported ${count} item batches.`);
                         }}
                     />
-                    <Button onClick={() => router.push('/production/create')}>
+                    <Button onClick={() => setIsCreateModalOpen(true)}>
                         <Plus size={16} className="mr-2" />
                         Create Item
                     </Button>
@@ -325,6 +327,13 @@ export default function ItemList() {
                     </Card>
                 )}
             </div>
+            {isCreateModalOpen && (
+                <CreateItemModal
+                    isOpen={isCreateModalOpen}
+                    onClose={() => setIsCreateModalOpen(false)}
+                    onSuccess={loadItems}
+                />
+            )}
         </div>
     );
 }

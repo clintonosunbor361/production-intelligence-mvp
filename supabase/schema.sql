@@ -146,6 +146,14 @@ CREATE TABLE IF NOT EXISTS task_types (
   UNIQUE (organization_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS category_types (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (organization_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS tailors (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -170,6 +178,7 @@ CREATE TABLE IF NOT EXISTS rate_cards (
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_types_org ON task_types(organization_id);
+CREATE INDEX IF NOT EXISTS idx_category_types_org ON category_types(organization_id);
 CREATE INDEX IF NOT EXISTS idx_tailors_org ON tailors(organization_id);
 CREATE INDEX IF NOT EXISTS idx_rate_cards_org ON rate_cards(organization_id);
 
@@ -180,6 +189,7 @@ CREATE TABLE IF NOT EXISTS work_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   item_id uuid NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  category_type_id uuid NOT NULL REFERENCES category_types(id) ON DELETE RESTRICT,
   task_type_id uuid NOT NULL REFERENCES task_types(id) ON DELETE RESTRICT,
   tailor_id uuid NOT NULL REFERENCES tailors(id) ON DELETE RESTRICT,
 
@@ -197,8 +207,8 @@ CREATE TABLE IF NOT EXISTS work_assignments (
   updated_at timestamptz NOT NULL DEFAULT now(),
 
   -- Crucial business rule:
-  -- (organization_id, item_id, task_type_id, tailor_id) must be unique
-  UNIQUE (organization_id, item_id, task_type_id, tailor_id),
+  -- (organization_id, item_id, category_type_id, task_type_id) must be unique
+  UNIQUE (organization_id, item_id, category_type_id, task_type_id),
 
   -- QC_FAILED requires notes
   CONSTRAINT qc_failed_requires_notes CHECK (
