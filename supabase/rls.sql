@@ -148,6 +148,113 @@ ON public.work_assignments
 FOR SELECT
 USING (organization_id = public.current_org_id());
 
+-- Rate Cards / Master Data Manage
+DROP POLICY IF EXISTS rate_cards_insert_manage ON public.rate_cards;
+CREATE POLICY rate_cards_insert_manage
+ON public.rate_cards
+FOR INSERT
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS rate_cards_update_manage ON public.rate_cards;
+CREATE POLICY rate_cards_update_manage
+ON public.rate_cards
+FOR UPDATE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'))
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS rate_cards_delete_manage ON public.rate_cards;
+CREATE POLICY rate_cards_delete_manage
+ON public.rate_cards
+FOR DELETE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+-- Tailors Manage
+DROP POLICY IF EXISTS tailors_insert_manage ON public.tailors;
+CREATE POLICY tailors_insert_manage
+ON public.tailors
+FOR INSERT
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_tailors'));
+
+DROP POLICY IF EXISTS tailors_update_manage ON public.tailors;
+CREATE POLICY tailors_update_manage
+ON public.tailors
+FOR UPDATE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_tailors'))
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_tailors'));
+
+DROP POLICY IF EXISTS tailors_delete_manage ON public.tailors;
+CREATE POLICY tailors_delete_manage
+ON public.tailors
+FOR DELETE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_tailors'));
+
+-- Product Types Manage
+DROP POLICY IF EXISTS product_types_insert_manage ON public.product_types;
+CREATE POLICY product_types_insert_manage
+ON public.product_types
+FOR INSERT
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS product_types_update_manage ON public.product_types;
+CREATE POLICY product_types_update_manage
+ON public.product_types
+FOR UPDATE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'))
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS product_types_delete_manage ON public.product_types;
+CREATE POLICY product_types_delete_manage
+ON public.product_types
+FOR DELETE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+-- Task Types Manage
+DROP POLICY IF EXISTS task_types_insert_manage ON public.task_types;
+CREATE POLICY task_types_insert_manage
+ON public.task_types
+FOR INSERT
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS task_types_update_manage ON public.task_types;
+CREATE POLICY task_types_update_manage
+ON public.task_types
+FOR UPDATE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'))
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS task_types_delete_manage ON public.task_types;
+CREATE POLICY task_types_delete_manage
+ON public.task_types
+FOR DELETE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+-- Category Types Manage
+ALTER TABLE public.category_types ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS category_types_select_org ON public.category_types;
+CREATE POLICY category_types_select_org
+ON public.category_types
+FOR SELECT
+USING (organization_id = public.current_org_id());
+
+DROP POLICY IF EXISTS category_types_insert_manage ON public.category_types;
+CREATE POLICY category_types_insert_manage
+ON public.category_types
+FOR INSERT
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS category_types_update_manage ON public.category_types;
+CREATE POLICY category_types_update_manage
+ON public.category_types
+FOR UPDATE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'))
+WITH CHECK (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
+DROP POLICY IF EXISTS category_types_delete_manage ON public.category_types;
+CREATE POLICY category_types_delete_manage
+ON public.category_types
+FOR DELETE
+USING (organization_id = public.current_org_id() AND public.has_permission('manage_rates'));
+
 -- =========================
 -- 5) Controlled writes for operational tables (tickets/items) behind permissions
 -- =========================

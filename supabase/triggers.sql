@@ -120,3 +120,43 @@ BEGIN
     RETURN NULL;
 END;
 $$;
+
+-- Trigger logic for generating item_key and item_no
+CREATE OR REPLACE FUNCTION public.set_item_key()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_ticket_number text;
+    v_next_no integer;
+BEGIN
+    IF NEW.item_key IS NULL OR NEW.item_no IS NULL THEN
+        -- Get the ticket number
+        SELECT ticket_number INTO v_ticket_number
+        FROM public.tickets
+        WHERE id = NEW.ticket_id AND organization_id = NEW.organization_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Ticket not found for the given organization.';
+        END IF;
+
+        -- Get the next item_no
+        SELECT COALESCE(MAX(item_no), 0) + 1 INTO v_next_no
+        FROM public.items
+        WHERE ticket_id = NEW.ticket_id AND organization_id = NEW.organization_id;
+
+        NEW.item_no := v_next_no;
+        NEW.item_key := v_ticket_number || '-' || v_next_no::text;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_items_set_key ON public.items;
+CREATE TRIGGER trg_items_set_key
+    BEFORE INSERT ON public.items
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_item_key();

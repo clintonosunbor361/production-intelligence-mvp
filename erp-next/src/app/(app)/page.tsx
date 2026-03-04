@@ -61,15 +61,15 @@ export default function Dashboard() {
         const activeItems = items.filter(i => i.status !== 'Received' && i.status !== 'Cancelled').length;
 
         // 2. Approved Pay (Revenue/Cost context) - Sum of approved tailor pay
-        const verifiedTasks = tasks.filter(t => t.verification_status === 'Approved' || t.verification_status === 'Verified');
-        const totalRevenue = verifiedTasks.reduce((sum, t) => sum + t.tailor_pay, 0);
+        const verifiedTasks = tasks.filter(t => t.status === 'QC_PASSED' || t.status === 'PAID');
+        const totalRevenue = verifiedTasks.reduce((sum, t) => sum + (Number(t.pay_amount) || 0), 0);
 
         // 3. Status Breakdown
         const productionCount = items.filter(i => i.status === 'New').length;
         const completedCount = items.filter(i => i.status === 'Received').length;
 
         // 4. Pending Tasks
-        const pendingVerification = tasks.filter(t => t.verification_status === 'Pending').length;
+        const pendingVerification = tasks.filter(t => t.status === 'CREATED').length;
 
         // 5. Top Product Types Logic
         const productStats = {};

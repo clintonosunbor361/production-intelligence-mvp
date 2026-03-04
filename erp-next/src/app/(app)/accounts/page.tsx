@@ -27,9 +27,9 @@ export default function PendingVerification() {
 
     const filteredTasks = tasks.filter(task => {
         if (filter === 'all') return true;
-        if (filter === 'pending') return task.verification_status === 'Pending';
-        if (filter === 'approved') return task.verification_status === 'Approved' || task.verification_status === 'Verified';
-        if (filter === 'rejected') return task.verification_status === 'Rejected';
+        if (filter === 'pending') return task.status === 'CREATED';
+        if (filter === 'approved') return task.status === 'QC_PASSED' || task.status === 'PAID';
+        if (filter === 'rejected') return task.status === 'QC_FAILED';
         return true;
     });
 
@@ -97,10 +97,10 @@ export default function PendingVerification() {
                             </TableCell>
                             <TableCell>{task.tailor_name}</TableCell>
                             <TableCell className="font-medium">
-                                ₦{parseFloat(task.tailor_pay).toFixed(2)}
+                                ₦{parseFloat(task.pay_amount || 0).toFixed(2)}
                             </TableCell>
                             <TableCell>
-                                {task.verification_status === 'Pending' ? (
+                                {task.status === 'CREATED' ? (
                                     <div className="flex gap-2">
                                         <Button
                                             size="sm"
@@ -118,8 +118,8 @@ export default function PendingVerification() {
                                         </Button>
                                     </div>
                                 ) : (
-                                    <Badge variant={task.verification_status === 'Approved' || task.verification_status === 'Verified' ? 'success' : 'danger'}>
-                                        {task.verification_status === 'Verified' ? 'Approved' : task.verification_status}
+                                    <Badge variant={task.status === 'QC_PASSED' || task.status === 'PAID' ? 'success' : 'danger'}>
+                                        {task.status}
                                     </Badge>
                                 )}
                             </TableCell>

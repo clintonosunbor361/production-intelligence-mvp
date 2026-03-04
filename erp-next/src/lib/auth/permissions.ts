@@ -9,7 +9,19 @@ export async function getUserPermissions() {
     return { user: null, permissions: [] as string[] }
   }
 
-  // Get permissions from DB
+  // Identify active organization (for MVP, we assume the first/only org the user belongs to)
+  const { data: orgData } = await supabase
+    .from('user_roles')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single()
+
+  if (!orgData) {
+    return { user, permissions: [] as string[] }
+  }
+
+  // Get permissions from DB strictly scoped to that organization
   const { data, error } = await supabase
     .from('user_roles')
     .select(`
@@ -21,6 +33,7 @@ export async function getUserPermissions() {
       )
     `)
     .eq('user_id', user.id)
+    .eq('organization_id', orgData.organization_id)
     .single()
 
   if (error || !data || !data.roles) {
@@ -37,5 +50,5 @@ export async function getUserPermissions() {
 
 export async function hasPermission(permissionName: string) {
   const { permissions } = await getUserPermissions()
-  return permissions.includes(permissionName) || permissions.includes('admin')
+  return permissions.includes(permissionName)
 }

@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS items (
   ticket_id uuid NOT NULL REFERENCES tickets(id) ON DELETE CASCADE, -- ticket cancel cascades to items by deleting, or by status changes via RPC
   product_type_id uuid NOT NULL REFERENCES product_types(id) ON DELETE RESTRICT,
   item_key text NOT NULL,
+  item_no integer NOT NULL,
   status item_status NOT NULL DEFAULT 'IN_PROGRESS',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -170,11 +171,13 @@ CREATE TABLE IF NOT EXISTS rate_cards (
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   task_type_id uuid NOT NULL REFERENCES task_types(id) ON DELETE RESTRICT,
   product_type_id uuid NOT NULL REFERENCES product_types(id) ON DELETE RESTRICT,
+  category_type_id uuid NOT NULL REFERENCES category_types(id) ON DELETE RESTRICT,
   band_a_fee numeric(12,2) NOT NULL CHECK (band_a_fee >= 0),
   band_b_fee numeric(12,2) NOT NULL CHECK (band_b_fee >= 0),
+  active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organization_id, task_type_id, product_type_id)
+  UNIQUE (organization_id, product_type_id, category_type_id, task_type_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_types_org ON task_types(organization_id);
