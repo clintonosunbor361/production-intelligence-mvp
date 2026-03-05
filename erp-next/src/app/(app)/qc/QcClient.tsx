@@ -6,15 +6,22 @@ import { db } from '@/services/db';
 import { Card } from '@/components/UI/Card';
 import { Button } from '@/components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { useRouter } from 'next/navigation';
+import { Modal } from '@/components/UI/Modal';
 import { format } from 'date-fns';
 import { Filter, ChevronRight } from 'lucide-react';
+import ManageItemTasks from './item/[itemId]/QcItemClient';
+import { hasPerm } from '@/lib/permissions';
 
-export default function QCQueue() {
-    const router = useRouter();
+export default function QCQueue({ permissions = [] }: { permissions?: string[] }) {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, new, received_attention
+
+    const [rateCard, setRateCard] = useState([]);
+    const [tailors, setTailors] = useState([]);
+
+    const [selectedItemId, setSelectedItemId] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
         loadItems();
@@ -22,10 +29,16 @@ export default function QCQueue() {
 
     const loadItems = async () => {
         setLoading(true);
-        const data = await db.getItems();
+        const [data, rc, t] = await Promise.all([
+            db.getItems(),
+            db.getRates(),
+            db.getTailors()
+        ]);
         // In a real app, we'd filter on DB side
         // For QC, we typically want to see Active items, not Cancelled
         setItems(data.filter(i => i.status !== 'Cancelled'));
+        setRateCard(rc);
+        setTailors(t);
         setLoading(false);
     };
 
@@ -34,6 +47,8 @@ export default function QCQueue() {
         if (filter === 'received_attention') return item.needs_qc_attention;
         return true;
     });
+
+    const canManageQc = permissions.includes('manage_qc') || (permissions.length > 0 && hasPerm(permissions, 'manage_qc'));
 
     return (
         <div className="space-y-6">
@@ -69,7 +84,11 @@ export default function QCQueue() {
             <Card padding="p-0">
                 <Table headers={['Item Key', 'Customer Name', 'Product Type', 'Status', 'Assigned Date', 'Action']}>
                     {filteredItems.map((item) => (
-                        <TableRow key={item.id} onClick={() => router.push(`/qc/item/${item.id}`)} className="cursor-pointer">
+                        <TableRow
+                            key={item.id}
+                            onClick={() => { setSelectedItemId(item.id); setIsModalOpen(true); }}
+                            className="cursor-pointer"
+                        >
                             <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
                             <TableCell className="font-medium">{item.customer_name}</TableCell>
                             <TableCell>{item.product_type_name}</TableCell>
@@ -83,7 +102,15 @@ export default function QCQueue() {
                                 {item.assigned_date ? format(new Date(item.assigned_date), 'MMM d') : '-'}
                             </TableCell>
                             <TableCell>
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedItemId(item.id);
+                                        setIsModalOpen(true);
+                                    }}
+                                >
                                     Open <ChevronRight size={16} className="ml-1" />
                                 </Button>
                             </TableCell>
@@ -98,6 +125,26 @@ export default function QCQueue() {
                     )}
                 </Table>
             </Card>
+
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title=""
+                maxWidth="max-w-4xl"
+            >
+                {selectedItemId && (
+                    <ManageItemTasks
+                        itemId={selectedItemId}
+                        onClose={() => {
+                            setIsModalOpen(false);
+                            loadItems();
+                        }}
+                        canManageQc={canManageQc}
+                        rateCard={rateCard}
+                        tailors={tailors}
+                    />
+                )}
+            </Modal>
         </div>
     );
 }

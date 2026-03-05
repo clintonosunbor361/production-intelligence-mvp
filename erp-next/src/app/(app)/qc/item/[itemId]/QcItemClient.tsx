@@ -7,10 +7,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/UI/Card';
 import { Button } from '@/components/UI/Button';
 import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
-import { Modal } from '@/components/UI/Modal';
 import { ArrowLeft, Plus, CheckCircle2 } from 'lucide-react';
 
-export default function ManageItemTasks({ itemId: propItemId, onClose, canManageQc }: { itemId?: string, onClose?: () => void, canManageQc?: boolean }) {
+export default function ManageItemTasks({ itemId: propItemId, onClose, canManageQc, rateCard = [], tailors = [] }: { itemId?: string, onClose?: () => void, canManageQc?: boolean, rateCard?: any[], tailors?: any[] }) {
     const params = useParams();
     const itemId = propItemId || params.itemId;
     const router = useRouter();
@@ -18,12 +17,6 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
     const [item, setItem] = useState(null);
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
-
-    // Task Creation Context
-    const [rateCard, setRateCard] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [taskTypes, setTaskTypes] = useState([]);
-    const [tailors, setTailors] = useState([]);
 
     // Form State
     const [showAssignForm, setShowAssignForm] = useState(false);
@@ -34,35 +27,28 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
     });
 
     useEffect(() => {
-        loadData();
+        if (itemId) {
+            loadData();
+        }
     }, [itemId]);
 
     const loadData = async () => {
         setLoading(true);
-        const [i, allItems] = await Promise.all([
-            db.getItems().then(items => items.find(x => x.id === itemId)),
-            db.getItems() // Re-fetch to be safe if `getItems` signature changes, but here we used `find` on array.
-            // Actually db.getItems returns all enriched, so the first call is enough.
+        const [i, t] = await Promise.all([
+            db.getItemById(itemId),
+            db.getTasksByItemId(itemId)
         ]);
 
         // Safety check if item not found
         if (!i) {
             alert("Item not found");
-            router.push('/qc');
+            if (onClose) onClose();
+            else router.push('/qc');
             return;
         }
 
         setItem(i);
-
-        const [t, rc, tail] = await Promise.all([
-            db.getTasksByItemId(itemId),
-            db.getRates(),
-            db.getTailors()
-        ]);
-
         setTasks(t);
-        setRateCard(rc);
-        setTailors(tail);
         setLoading(false);
     };
 
@@ -99,7 +85,7 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
     const handleCreateTask = async (e) => {
         if (!canManageQc) {
             e.preventDefault();
-            alert("Master Data writes are read-only for your role.");
+            alert("Not allowed");
             return;
         }
         e.preventDefault();
@@ -122,7 +108,25 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
         }
     };
 
-    if (loading || !item) return <div>Loading...</div>;
+    if (loading || !item) {
+        return (
+            <div className="space-y-6 animate-pulse p-2">
+                {!onClose && <div className="h-8 w-32 bg-gray-200 rounded"></div>}
+                <div className="flex justify-between items-start">
+                    <div>
+                        <div className="h-8 w-48 bg-gray-200 rounded mb-2"></div>
+                        <div className="h-4 w-64 bg-gray-200 rounded"></div>
+                    </div>
+                </div>
+                <Card padding="p-4">
+                    <div className="space-y-4">
+                        <div className="h-10 bg-gray-100 rounded"></div>
+                        <div className="h-10 bg-gray-100 rounded"></div>
+                    </div>
+                </Card>
+            </div>
+        );
+    }
 
     const handleClose = () => {
         if (onClose) {
@@ -143,7 +147,7 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
             )}
 
             {/* Item Header */}
-            <div className="flex justify-between items-start">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                     <h1 className="text-xl font-serif text-maison-primary flex items-center gap-3">
                         {item.item_key}

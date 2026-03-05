@@ -10,8 +10,10 @@ import { Modal } from '@/components/UI/Modal';
 import { Input } from '@/components/UI/Input';
 import { CSVImporter } from '@/components/Shared/CSVImporter';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { hasPerm } from '@/lib/permissions';
 
-export default function ManageTaskTypes({ canManageRates }: { canManageRates: boolean }) {
+export default function ManageTaskTypes({ permissions }: { permissions: string[] }) {
+    const canManageRates = hasPerm(permissions, 'manage_rates');
     const [tasks, setTasks] = useState([]);
     const [productTypes, setProductTypes] = useState([]);
     const [categories, setCategories] = useState([]);

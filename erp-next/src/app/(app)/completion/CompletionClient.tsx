@@ -81,7 +81,7 @@ export default function Receiving({ canManageCompletion }: { canManageCompletion
             return;
         }
         if (!window.confirm("Mark item as Physically Received?")) return;
-        await db.updateItemStatus(itemId, 'Received');
+        await db.updateItemStatus(itemId, 'COMPLETED');
         loadItems();
     };
 

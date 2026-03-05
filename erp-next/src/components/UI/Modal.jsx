@@ -7,8 +7,14 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
         const handleEsc = (e) => {
             if (e.key === 'Escape') onClose();
         };
-        if (isOpen) window.addEventListener('keydown', handleEsc);
-        return () => window.removeEventListener('keydown', handleEsc);
+        if (isOpen) {
+            window.addEventListener('keydown', handleEsc);
+            document.body.style.overflow = 'hidden';
+        }
+        return () => {
+            window.removeEventListener('keydown', handleEsc);
+            document.body.style.overflow = '';
+        };
     }, [isOpen, onClose]);
 
     if (!isOpen) return null;
@@ -20,7 +26,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                 onClick={onClose}
             />
 
-            <div className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth} overflow-hidden transform transition-all border border-gray-100`}>
+            <div className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth} max-h-[85vh] flex flex-col border border-gray-100`}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                     <h3 className="text-lg font-serif font-medium text-maison-primary">{title}</h3>
                     <button
@@ -31,7 +37,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
                     </button>
                 </div>
 
-                <div className="p-6">
+                <div className="p-6 overflow-y-auto lg:overflow-visible flex-1">
                     {children}
                 </div>
             </div>

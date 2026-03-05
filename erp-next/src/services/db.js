@@ -2,31 +2,101 @@ import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
 
-async function getOrgId() {
+export class NotAuthenticatedError extends Error {
+    constructor(message = "User not authenticated") {
+        super(message)
+        this.name = "NotAuthenticatedError"
+    }
+}
 
+export class MissingProfileError extends Error {
+    constructor(message = "User profile not found. Contact administrator.") {
+        super(message)
+        this.name = "MissingProfileError"
+    }
+}
+
+export class MissingRoleError extends Error {
+    constructor(message = "User role not assigned. Contact administrator.") {
+        super(message)
+        this.name = "MissingRoleError"
+    }
+}
+
+export class PermissionDeniedError extends Error {
+    constructor(message = "Permission denied for this action.") {
+        super(message)
+        this.name = "PermissionDeniedError"
+    }
+}
+
+async function getContext() {
     const { data: userData } = await supabase.auth.getUser()
 
     if (!userData?.user) {
-        throw new Error("User not authenticated")
+        throw new NotAuthenticatedError()
     }
 
-    const { data, error } = await supabase
+    const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id')
         .eq('user_id', userData.user.id)
         .limit(1)
         .maybeSingle()
 
-    if (error) {
-        console.error(error)
-        throw new Error(error.message)
+    if (profileError || !profile) {
+        throw new MissingProfileError(profileError?.message || "User profile not found.")
     }
 
-    if (!data) {
-        throw new Error("User profile not found. Create a profile row.")
+    const orgId = profile.organization_id
+
+    // Fetch role
+    const { data: userRole, error: roleError } = await supabase
+        .from('user_roles')
+        .select('roles(name, id)')
+        .eq('user_id', userData.user.id)
+        .eq('organization_id', orgId)
+        .limit(1)
+        .maybeSingle()
+
+    if (roleError || !userRole || !userRole.roles) {
+        throw new MissingRoleError(roleError?.message || "User role not found.")
     }
 
-    return data.organization_id
+    const roleId = Array.isArray(userRole.roles) ? userRole.roles[0]?.id : userRole.roles.id
+    const roleName = Array.isArray(userRole.roles) ? userRole.roles[0]?.name : userRole.roles.name
+
+    // Fetch permissions
+    const { data: rolePermissions, error: permError } = await supabase
+        .from('role_permissions')
+        .select('permissions(name)')
+        .eq('role_id', roleId)
+
+    if (permError) {
+        throw new Error(permError.message)
+    }
+
+    // Role Permissions could also be structured differently depending on the Postgres result, usually it's array of objects
+    const permissions = rolePermissions?.map(rp => Array.isArray(rp.permissions) ? rp.permissions[0]?.name : rp.permissions?.name) || []
+
+    return {
+        userId: userData.user.id,
+        organizationId: orgId,
+        roleName: roleName,
+        permissions: permissions.filter(Boolean)
+    }
+}
+
+function requireOrg(ctx) {
+    if (!ctx || !ctx.organizationId) {
+        throw new Error("Missing organization context")
+    }
+}
+
+function requirePermission(ctx, perm) {
+    if (!ctx.permissions.includes(perm)) {
+        throw new PermissionDeniedError(`Requires ${perm} permission`)
+    }
 }
 
 export const db = {
@@ -36,12 +106,12 @@ export const db = {
     // -------------------------
 
     async getProductTypes() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('product_types')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .order('name')
 
         if (error) {
@@ -53,12 +123,12 @@ export const db = {
     },
 
     async getCategories() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('category_types')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .order('name')
 
         if (error) {
@@ -70,12 +140,12 @@ export const db = {
     },
 
     async getTaskTypes() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('task_types')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
 
         if (error) {
             console.error(error)
@@ -86,7 +156,7 @@ export const db = {
     },
 
     async getRates() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('rate_cards')
@@ -96,7 +166,7 @@ export const db = {
                 category_types(name),
                 task_types(name)
             `)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
 
         if (error) {
             console.error(error)
@@ -112,12 +182,12 @@ export const db = {
     },
 
     async getTailors() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('tailors')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
 
         if (error) {
             console.error(error)
@@ -128,12 +198,12 @@ export const db = {
     },
 
     async getTailorSpecialPay(tailorId) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('tailor_special_pay')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .eq('tailor_id', tailorId)
 
         if (error) {
@@ -146,12 +216,12 @@ export const db = {
 
     async getTicketByNumber(ticket_number) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('tickets')
             .select('*')
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .eq('ticket_number', ticket_number)
             .maybeSingle()
 
@@ -164,12 +234,13 @@ export const db = {
     },
 
     async createTicket({ ticket_number, customer_name, branch_id = null, internal_notes = null }) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
 
         const { data, error } = await supabase
             .from('tickets')
             .insert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 branch_id,
                 ticket_number,
                 customer_name,
@@ -188,10 +259,11 @@ export const db = {
     },
 
     async createItemsForTicket({ ticket_id, product_type_id, quantity = 1 }) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
 
         const rows = Array.from({ length: Number(quantity || 1) }).map(() => ({
-            organization_id: orgId,
+            organization_id: ctx.organizationId,
             ticket_id,
             product_type_id
         }))
@@ -215,12 +287,13 @@ export const db = {
 
     async createProductType(name) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         const { data, error } = await supabase
             .from('product_types')
             .insert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 name,
                 active: true
             })
@@ -237,12 +310,13 @@ export const db = {
 
     async createCategory(name) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         const { data, error } = await supabase
             .from('category_types')
             .insert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 name,
                 active: true
             })
@@ -259,13 +333,14 @@ export const db = {
 
     async createTailor(tailorData) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
 
         const { data, error } = await supabase
             .from('tailors')
             .insert({
-                organization_id: orgId,
-                ...tailorData
+                ...tailorData,
+                organization_id: ctx.organizationId
             })
             .select()
             .single()
@@ -280,10 +355,17 @@ export const db = {
 
     async updateTailor(id, updates) {
 
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
+
         const { data, error } = await supabase
             .from('tailors')
-            .update(updates)
+            .update({
+                ...updates,
+                organization_id: ctx.organizationId
+            })
             .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
             .select()
             .single()
 
@@ -297,16 +379,25 @@ export const db = {
 
     async toggleTailorStatus(id) {
 
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
+
         const { data: tailor } = await supabase
             .from('tailors')
             .select('active')
             .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
             .single()
+
+        if (!tailor) {
+            throw new Error("Tailor not found")
+        }
 
         const { data, error } = await supabase
             .from('tailors')
             .update({ active: !tailor.active })
             .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
             .select()
             .single()
 
@@ -320,12 +411,18 @@ export const db = {
 
     async saveTailorSpecialPay(tailor_id, task_type_id, uplift_pct) {
 
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
+
         const { data, error } = await supabase
             .from('tailor_special_pay')
             .upsert({
+                organization_id: ctx.organizationId,
                 tailor_id,
                 task_type_id,
                 uplift_pct
+            }, {
+                onConflict: 'organization_id,tailor_id,task_type_id'
             })
             .select()
             .single()
@@ -340,10 +437,14 @@ export const db = {
 
     async removeTailorSpecialPay(id) {
 
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
+
         const { error } = await supabase
             .from('tailor_special_pay')
             .delete()
             .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
 
         if (error) {
             console.error(error)
@@ -356,12 +457,13 @@ export const db = {
     // -------------------------
 
     async upsertRateCard(payload) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         const { data, error } = await supabase
             .from('rate_cards')
             .upsert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 product_type_id: payload.product_type_id,
                 category_type_id: payload.category_type_id,
                 task_type_id: payload.task_type_id,
@@ -383,13 +485,14 @@ export const db = {
     },
 
     async createTaskTypeAndRateByIds(payload) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         // create task type
         const { data: taskType, error: taskError } = await supabase
             .from('task_types')
             .insert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 name: payload.name
             })
             .select()
@@ -411,14 +514,15 @@ export const db = {
 
     async createTaskAndRate(productName, categoryName, taskName, bandAFee, bandBFee) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         // product
         const { data: product } = await supabase
             .from('product_types')
             .select('*')
             .eq('name', productName)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .single()
 
         const productId = product?.id
@@ -428,7 +532,7 @@ export const db = {
             .from('category_types')
             .select('*')
             .eq('name', categoryName)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .single()
 
         const categoryId = category?.id
@@ -437,7 +541,7 @@ export const db = {
         const { data: taskType } = await supabase
             .from('task_types')
             .insert({
-                organization_id: orgId,
+                organization_id: ctx.organizationId,
                 name: taskName
             })
             .select()
@@ -457,13 +561,14 @@ export const db = {
 
     async updateTaskAndRate(taskTypeId, payload) {
 
-        const orgId = await getOrgId()
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
 
         await supabase
             .from('task_types')
             .update({ name: payload.name })
             .eq('id', taskTypeId)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
 
         const rateData = await this.upsertRateCard({
             product_type_id: payload.product_type_id,
@@ -481,7 +586,7 @@ export const db = {
     // -------------------------
 
     async getItems() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('items')
@@ -490,7 +595,7 @@ export const db = {
                 tickets(ticket_number, customer_name),
                 product_types(name)
             `)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .order('created_at', { ascending: false })
 
         if (error) {
@@ -507,8 +612,37 @@ export const db = {
         }))
     },
 
+    async getItemById(itemId) {
+        const ctx = await getContext()
+
+        const { data, error } = await supabase
+            .from('items')
+            .select(`
+                *,
+                tickets(ticket_number, customer_name),
+                product_types(name)
+            `)
+            .eq('id', itemId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        if (!data) return null;
+
+        return {
+            ...data,
+            ticket_number: data.tickets?.ticket_number,
+            customer_name: data.tickets?.customer_name,
+            product_type_name: data.product_types?.name
+        }
+    },
+
     async getTasksByItemId(itemId) {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('work_assignments')
@@ -518,7 +652,7 @@ export const db = {
                 tailors(name),
                 category_types(name)
             `)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .eq('item_id', itemId)
             .order('created_at', { ascending: false })
 
@@ -536,10 +670,14 @@ export const db = {
     },
 
     async deleteItem(itemId) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
+
         const { error } = await supabase
             .from('items')
             .delete()
             .eq('id', itemId)
+            .eq('organization_id', ctx.organizationId)
 
         if (error) {
             console.error(error)
@@ -550,7 +688,7 @@ export const db = {
     },
 
     async getWeeklyPayroll() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('work_assignments')
@@ -564,7 +702,7 @@ export const db = {
         name
       )
     `)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .eq('status', 'PAID')
 
         if (error) {
@@ -599,6 +737,9 @@ export const db = {
     },
 
     async createWorkAssignment(payload) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
+
         const { data, error } = await supabase.rpc('create_work_assignment', {
             p_item_id: payload.item_id,
             p_category_type_id: payload.category_type_id,
@@ -615,7 +756,7 @@ export const db = {
     },
 
     async getTasks() {
-        const orgId = await getOrgId()
+        const ctx = await getContext()
 
         const { data, error } = await supabase
             .from('work_assignments')
@@ -626,7 +767,7 @@ export const db = {
                 category_types(name),
                 items(item_key, tickets(customer_name, ticket_number))
             `)
-            .eq('organization_id', orgId)
+            .eq('organization_id', ctx.organizationId)
             .order('created_at', { ascending: false })
 
         if (error) {
@@ -648,6 +789,9 @@ export const db = {
     },
 
     async verifyTask(taskId, status, reason = null) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_qc')
+
         let error;
         if (status === 'Approved' || status === 'QC_PASSED') {
             const result = await supabase.rpc('qc_pass', { p_assignment_id: taskId })
@@ -666,5 +810,28 @@ export const db = {
         }
 
         return { id: taskId, status }
+    },
+
+    async updateItemStatus(itemId, status) {
+        const ctx = await getContext()
+
+        // Although it is technically accessible to 'manage_completion' conceptually, 
+        // passing permission check is skipped here like other item generic reads 
+        // to conform to existing UI needs or could be explicitly narrowed later.
+
+        const { data, error } = await supabase
+            .from('items')
+            .update({ status })
+            .eq('id', itemId)
+            .eq('organization_id', ctx.organizationId)
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data
     }
 }

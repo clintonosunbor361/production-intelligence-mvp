@@ -18,5 +18,25 @@ export default async function AppLayout({
         redirect('/login')
     }
 
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('user_id', data.user.id)
+        .maybeSingle()
+
+    if (!profile?.organization_id) {
+        redirect('/unauthorized')
+    }
+
+    const { data: userRoles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('role_id')
+        .eq('user_id', data.user.id)
+        .eq('organization_id', profile.organization_id)
+
+    if (rolesError || !userRoles || userRoles.length !== 1) {
+        redirect('/unauthorized')
+    }
+
     return <DashboardLayout>{children}</DashboardLayout>
 }
