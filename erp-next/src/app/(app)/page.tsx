@@ -35,17 +35,16 @@ export default function Dashboard() {
 
     const loadStats = async () => {
         setLoading(true);
-        const [allItems, allTasks, payroll] = await Promise.all([
-            db.getItems(),
-            db.getTasks(),
-            db.getWeeklyPayroll() // Note: For MVP we use the same getWeeklyPayroll, though in complete app it should accept dates too
-        ]);
-
-        // Filter data by date range
         const startDate = new Date(dateRange.start);
         startDate.setHours(0, 0, 0, 0);
         const endDate = new Date(dateRange.end);
         endDate.setHours(23, 59, 59, 999);
+
+        const [allItems, allTasks, payroll] = await Promise.all([
+            db.getItems(),
+            db.getTasks(),
+            db.getWeeklyPayroll(startDate.toISOString(), endDate.toISOString())
+        ]);
 
         const items = allItems.filter(item => {
             const date = new Date(item.created_at);
@@ -58,15 +57,15 @@ export default function Dashboard() {
         });
 
         // 1. Active Items (Not Received, Not Cancelled)
-        const activeItems = items.filter(i => i.status !== 'Received' && i.status !== 'Cancelled').length;
+        const activeItems = items.filter(i => i.status !== 'COMPLETED' && i.status !== 'CANCELLED').length;
 
         // 2. Approved Pay (Revenue/Cost context) - Sum of approved tailor pay
         const verifiedTasks = tasks.filter(t => t.status === 'QC_PASSED' || t.status === 'PAID');
         const totalRevenue = verifiedTasks.reduce((sum, t) => sum + (Number(t.pay_amount) || 0), 0);
 
         // 3. Status Breakdown
-        const productionCount = items.filter(i => i.status === 'New').length;
-        const completedCount = items.filter(i => i.status === 'Received').length;
+        const productionCount = items.filter(i => i.status === 'IN_PRODUCTION').length;
+        const completedCount = items.filter(i => i.status === 'COMPLETED').length;
 
         // 4. Pending Tasks
         const pendingVerification = tasks.filter(t => t.status === 'CREATED').length;
@@ -74,11 +73,11 @@ export default function Dashboard() {
         // 5. Top Product Types Logic
         const productStats = {};
         items.forEach(item => {
-            if (item.status === 'Cancelled') return;
+            if (item.status === 'CANCELLED') return;
             if (!productStats[item.product_type_name]) {
                 productStats[item.product_type_name] = { produced: 0, backlog: 0 };
             }
-            if (item.status === 'Received') {
+            if (item.status === 'COMPLETED') {
                 productStats[item.product_type_name].produced++;
             } else {
                 productStats[item.product_type_name].backlog++;

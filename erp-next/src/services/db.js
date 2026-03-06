@@ -101,6 +101,47 @@ function requirePermission(ctx, perm) {
 
 export const db = {
 
+    async getCurrentUser() {
+        const { data: userData } = await supabase.auth.getUser()
+        if (!userData?.user) return null
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('organization_id')
+            .eq('user_id', userData.user.id)
+            .limit(1)
+            .maybeSingle()
+
+        let roleName = 'No role assigned'
+
+        if (profile?.organization_id) {
+            const { data: userRole } = await supabase
+                .from('user_roles')
+                .select('roles(name)')
+                .eq('user_id', userData.user.id)
+                .eq('organization_id', profile.organization_id)
+                .limit(1)
+                .maybeSingle()
+
+            if (userRole && userRole.roles) {
+                roleName = Array.isArray(userRole.roles) ? userRole.roles[0]?.name : userRole.roles.name
+            }
+        }
+
+        return {
+            email: userData.user.email,
+            roleName: roleName || 'No role assigned'
+        }
+    },
+
+    async signOut() {
+        const { error } = await supabase.auth.signOut()
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+    },
+
     // -------------------------
     // MASTER DATA READS
     // -------------------------
@@ -294,8 +335,7 @@ export const db = {
             .from('product_types')
             .insert({
                 organization_id: ctx.organizationId,
-                name,
-                active: true
+                name
             })
             .select()
             .single()
@@ -317,8 +357,7 @@ export const db = {
             .from('category_types')
             .insert({
                 organization_id: ctx.organizationId,
-                name,
-                active: true
+                name
             })
             .select()
             .single()
@@ -331,6 +370,104 @@ export const db = {
         return data
     },
 
+    async createTaskType(name) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { data, error } = await supabase
+            .from('task_types')
+            .insert({
+                organization_id: ctx.organizationId,
+                name
+            })
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data
+    },
+
+    async updateProductType(id, updates) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { data, error } = await supabase
+            .from('product_types')
+            .update({
+                name: updates.name
+            })
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data
+    },
+
+    async deleteProductType(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { error } = await supabase
+            .from('product_types')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+        return true
+    },
+
+    async updateCategory(id, updates) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { data, error } = await supabase
+            .from('category_types')
+            .update({
+                name: updates.name
+            })
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data
+    },
+
+    async deleteCategory(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { error } = await supabase
+            .from('category_types')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+        return true
+    },
     async createTailor(tailorData) {
 
         const ctx = await getContext()
@@ -458,18 +595,17 @@ export const db = {
 
     async upsertRateCard(payload) {
         const ctx = await getContext()
-        requirePermission(ctx, 'manage_rates')
+        const orgId = ctx.organizationId
 
         const { data, error } = await supabase
             .from('rate_cards')
             .upsert({
-                organization_id: ctx.organizationId,
+                organization_id: orgId,
                 product_type_id: payload.product_type_id,
                 category_type_id: payload.category_type_id,
                 task_type_id: payload.task_type_id,
                 band_a_fee: payload.band_a_fee,
-                band_b_fee: payload.band_b_fee,
-                active: payload.active !== undefined ? payload.active : true
+                band_b_fee: payload.band_b_fee
             }, {
                 onConflict: 'organization_id,product_type_id,category_type_id,task_type_id'
             })
@@ -559,26 +695,85 @@ export const db = {
         return rateData
     },
 
-    async updateTaskAndRate(taskTypeId, payload) {
-
+    async updateRateCard(id, payload) {
         const ctx = await getContext()
         requirePermission(ctx, 'manage_rates')
 
-        await supabase
-            .from('task_types')
-            .update({ name: payload.name })
-            .eq('id', taskTypeId)
+        const { data, error } = await supabase
+            .from('rate_cards')
+            .update({
+                product_type_id: payload.product_type_id,
+                category_type_id: payload.category_type_id,
+                task_type_id: payload.task_type_id,
+                band_a_fee: payload.band_a_fee,
+                band_b_fee: payload.band_b_fee,
+                active: payload.active
+            })
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data
+    },
+
+    async toggleRateCardStatus(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const { data: current, error: fetchError } = await supabase
+            .from('rate_cards')
+            .select('id, active')
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .single()
+
+        if (fetchError) {
+            console.error(fetchError)
+            throw new Error(fetchError.message)
+        }
+
+        if (!current) {
+            throw new Error("Rate card not found")
+        }
+
+        const { data, error } = await supabase
+            .from('rate_cards')
+            .update({ active: !current.active })
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select()
+            .single()
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        return data.active
+    },
+
+    async deleteRateCard(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        // First, optionally check if it's used if needed, but RLS/DB constraints manage this (RESTRICT on work_assignments)
+        const { error } = await supabase
+            .from('rate_cards')
+            .delete()
+            .eq('id', id)
             .eq('organization_id', ctx.organizationId)
 
-        const rateData = await this.upsertRateCard({
-            product_type_id: payload.product_type_id,
-            category_type_id: payload.category_type_id,
-            task_type_id: taskTypeId,
-            band_a_fee: payload.band_a_fee,
-            band_b_fee: payload.band_b_fee
-        })
-
-        return rateData
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+        return true
     },
 
     // -------------------------
@@ -593,7 +788,8 @@ export const db = {
             .select(`
                 *,
                 tickets(ticket_number, customer_name),
-                product_types(name)
+                product_types(name),
+                work_assignments(category_types(name))
             `)
             .eq('organization_id', ctx.organizationId)
             .order('created_at', { ascending: false })
@@ -620,7 +816,15 @@ export const db = {
             .select(`
                 *,
                 tickets(ticket_number, customer_name),
-                product_types(name)
+                product_types(name),
+                work_assignments(
+                    id,
+                    status,
+                    pay_amount,
+                    tailors(name),
+                    category_types(name),
+                    task_types(name)
+                )
             `)
             .eq('id', itemId)
             .eq('organization_id', ctx.organizationId)
@@ -687,28 +891,60 @@ export const db = {
         return true
     },
 
-    async getWeeklyPayroll() {
+    async getPendingPaymentsCount() {
         const ctx = await getContext()
 
-        const { data, error } = await supabase
+        const { count, error } = await supabase
+            .from('work_assignments')
+            .select('*', { count: 'exact', head: true })
+            .eq('organization_id', ctx.organizationId)
+            .eq('status', 'QC_PASSED')
+
+        if (error) {
+            console.error(error)
+            return 0
+        }
+
+        return count || 0
+    },
+
+    async getWeeklyPayroll(startDate, endDate) {
+        const ctx = await getContext()
+
+        let query = supabase
             .from('work_assignments')
             .select(`
-      id,
-      pay_amount,
-      status,
-      tailor_id,
-      tailors (
-        id,
-        name
-      )
-    `)
+                id,
+                pay_amount,
+                status,
+                created_at,
+                updated_at,
+                tailor_id,
+                tailors (
+                    id,
+                    name,
+                    band,
+                    department
+                )
+            `)
             .eq('organization_id', ctx.organizationId)
             .eq('status', 'PAID')
+
+        if (startDate) {
+            query = query.gte('updated_at', startDate)
+        }
+        if (endDate) {
+            query = query.lte('updated_at', endDate)
+        }
+
+        const { data, error } = await query
 
         if (error) {
             console.error(error)
             throw new Error(error.message)
         }
+
+        console.log("DEBUG: Raw PAID work_assignments for payroll:", data)
 
         const payrollMap = {}
 
@@ -720,6 +956,7 @@ export const db = {
                 payrollMap[tailorId] = {
                     tailor_id: tailorId,
                     tailor_name: tailor?.name || 'Unknown',
+                    department: tailor?.department || 'Production', // Using actual tailor department
                     weekly_verified_total: 0,
                     weekly_total_pay: 0,
                     task_count: 0
@@ -733,7 +970,9 @@ export const db = {
             payrollMap[tailorId].task_count += 1
         }
 
-        return Object.values(payrollMap)
+        const finalPayroll = Object.values(payrollMap)
+        console.log("DEBUG: Final aggregated payroll array:", finalPayroll)
+        return finalPayroll
     },
 
     async createWorkAssignment(payload) {
@@ -751,6 +990,9 @@ export const db = {
             console.error(error)
             throw new Error(error.message)
         }
+
+        // Update item status to IN_QC when a task is assigned
+        await this.updateItemStatus(payload.item_id, 'IN_QC');
 
         return data
     },

@@ -154,7 +154,7 @@ export default function ManageItemTasks({ itemId: propItemId, onClose, canManage
                         <Badge variant="neutral">{item.product_type_name}</Badge>
                     </h1>
                     <p className="text-sm text-maison-secondary mt-1">
-                        Ticket: {item.ticket_id} | Customer: {item.customer_name}
+                        Ticket: {item.ticket_number} | Customer: {item.customer_name}
                     </p>
                 </div>
                 <Button onClick={() => setShowAssignForm(!showAssignForm)} disabled={!canManageQc}>

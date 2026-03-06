@@ -78,10 +78,11 @@ export function CreateItemModal({ isOpen, onClose, onSuccess }) {
             }
 
             for (const prod of products) {
+                const qty = prod.quantity === "" ? 0 : Number(prod.quantity);
                 await db.createItemsForTicket({
                     ticket_id: ticket.id,
                     product_type_id: prod.product_type_id,
-                    quantity: prod.quantity
+                    quantity: qty
                 })
             }
 
@@ -179,18 +180,19 @@ export function CreateItemModal({ isOpen, onClose, onSuccess }) {
                                     <label className="block text-xs text-gray-500 mb-1">Quantity</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="50"
                                         required
                                         className="block w-full rounded-md border-gray-200 shadow-sm sm:text-sm py-2 px-3 border focus:ring-2 focus:ring-maison-primary/20 focus:outline-none"
                                         value={prod.quantity}
-                                        onChange={(e) =>
+                                        onChange={(e) => {
+                                            const val = e.target.value;
                                             handleProductChange(
                                                 index,
                                                 "quantity",
-                                                parseInt(e.target.value, 10) || 1
-                                            )
-                                        }
+                                                val === "" ? "" : parseInt(val, 10)
+                                            );
+                                        }}
                                     />
                                 </div>
 

@@ -33,7 +33,7 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'item_status') THEN
-    CREATE TYPE item_status AS ENUM ('IN_PROGRESS', 'COMPLETED', 'CANCELLED');
+    CREATE TYPE item_status AS ENUM ('IN_PRODUCTION', 'IN_QC', 'COMPLETED', 'CANCELLED');
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_type') THEN
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS items (
   product_type_id uuid NOT NULL REFERENCES product_types(id) ON DELETE RESTRICT,
   item_key text NOT NULL,
   item_no integer NOT NULL,
-  status item_status NOT NULL DEFAULT 'IN_PROGRESS',
+  status item_status NOT NULL DEFAULT 'IN_PRODUCTION',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (organization_id, item_key)

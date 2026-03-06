@@ -40,9 +40,10 @@ export default function ItemList({ canManageProduction }: { canManageProduction:
 
     const getStatusVariant = (status) => {
         switch (status) {
-            case 'New': return 'brand';
-            case 'Received': return 'success';
-            case 'Cancelled': return 'danger';
+            case 'IN_PRODUCTION': return 'brand';
+            case 'IN_QC': return 'warning';
+            case 'COMPLETED': return 'success';
+            case 'CANCELLED': return 'danger';
             case 'Hold': return 'warning';
             default: return 'neutral';
         }
@@ -59,8 +60,8 @@ export default function ItemList({ canManageProduction }: { canManageProduction:
         }
     };
 
-    const totalBacklog = items.filter(i => i.status !== 'Received' && i.status !== 'Cancelled').length;
-    const totalCompleted = items.filter(i => i.status === 'Received').length;
+    const totalBacklog = items.filter(i => i.status !== 'COMPLETED' && i.status !== 'CANCELLED').length;
+    const totalCompleted = items.filter(i => i.status === 'COMPLETED').length;
 
     const uniqueProductTypes = [...new Set(items.map(i => i.product_type_name))].filter(Boolean);
     const uniqueStatuses = [...new Set(items.map(i => i.status))].filter(Boolean);
@@ -282,8 +283,8 @@ export default function ItemList({ canManageProduction }: { canManageProduction:
                                             <span className="text-sm text-maison-secondary">
                                                 {group.items.length} {group.items.length === 1 ? 'Product' : 'Products'} Total
                                             </span>
-                                            <Badge variant={group.items.filter(i => i.status === 'Received').length === group.items.length ? 'success' : 'neutral'}>
-                                                {group.items.filter(i => i.status === 'Received').length} / {group.items.length} Completed
+                                            <Badge variant={group.items.filter(i => i.status === 'COMPLETED').length === group.items.length ? 'success' : 'neutral'}>
+                                                {group.items.filter(i => i.status === 'COMPLETED').length} / {group.items.length} Completed
                                             </Badge>
                                         </div>
                                     </div>
@@ -300,7 +301,7 @@ export default function ItemList({ canManageProduction }: { canManageProduction:
                                                 <TableCell>{item.product_type_name}</TableCell>
                                                 <TableCell>
                                                     <Badge variant={getStatusVariant(item.status)}>
-                                                        {item.status}
+                                                        {item.status === 'COMPLETED' ? 'Received' : item.status}
                                                     </Badge>
                                                     {item.needs_qc_attention && (
                                                         <Badge variant="warning" className="ml-2">Needs QC</Badge>

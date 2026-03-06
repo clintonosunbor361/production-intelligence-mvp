@@ -35,15 +35,16 @@ export default function QCQueue({ permissions = [] }: { permissions?: string[] }
             db.getTailors()
         ]);
         // In a real app, we'd filter on DB side
-        // For QC, we typically want to see Active items, not Cancelled
-        setItems(data.filter(i => i.status !== 'Cancelled'));
+        // For QC, we typically want to see Active items, not CANCELLED
+        setItems(data.filter(i => i.status !== 'CANCELLED'));
         setRateCard(rc);
         setTailors(t);
         setLoading(false);
     };
 
     const filteredItems = items.filter(item => {
-        if (filter === 'new') return item.status === 'New';
+        if (filter === 'in_production') return item.status === 'IN_PRODUCTION';
+        if (filter === 'in_qc') return item.status === 'IN_QC';
         if (filter === 'received_attention') return item.needs_qc_attention;
         return true;
     });
@@ -67,10 +68,16 @@ export default function QCQueue({ permissions = [] }: { permissions?: string[] }
                         All Items
                     </button>
                     <button
-                        onClick={() => setFilter('new')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'new' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                        onClick={() => setFilter('in_production')}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'in_production' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
                     >
                         New Items
+                    </button>
+                    <button
+                        onClick={() => setFilter('in_qc')}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filter === 'in_qc' ? 'bg-white shadow text-maison-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Assigned
                     </button>
                     <button
                         onClick={() => setFilter('received_attention')}
@@ -82,40 +89,40 @@ export default function QCQueue({ permissions = [] }: { permissions?: string[] }
             </div>
 
             <Card padding="p-0">
-                <Table headers={['Item Key', 'Customer Name', 'Product Type', 'Status', 'Assigned Date', 'Action']}>
-                    {filteredItems.map((item) => (
-                        <TableRow
-                            key={item.id}
-                            onClick={() => { setSelectedItemId(item.id); setIsModalOpen(true); }}
-                            className="cursor-pointer"
-                        >
-                            <TableCell className="font-medium font-mono text-xs">{item.item_key}</TableCell>
-                            <TableCell className="font-medium">{item.customer_name}</TableCell>
-                            <TableCell>{item.product_type_name}</TableCell>
-                            <TableCell>
-                                <div className="flex gap-2">
-                                    <Badge variant={item.status === 'New' ? 'brand' : 'neutral'}>{item.status}</Badge>
-                                    {item.needs_qc_attention && <Badge variant="warning">Check</Badge>}
-                                </div>
-                            </TableCell>
-                            <TableCell className="text-gray-500">
-                                {item.assigned_date ? format(new Date(item.assigned_date), 'MMM d') : '-'}
-                            </TableCell>
-                            <TableCell>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedItemId(item.id);
-                                        setIsModalOpen(true);
-                                    }}
-                                >
-                                    Open <ChevronRight size={16} className="ml-1" />
-                                </Button>
-                            </TableCell>
-                        </TableRow>
-                    ))}
+                <Table headers={['Ticket ID', 'Customer Name', 'Product Type', 'Status', 'Assigned Date']}>
+                    {filteredItems.map((item) => {
+                        const assignedCategories = item.work_assignments?.map((wa: any) => wa.category_types?.name).filter(Boolean) || [];
+                        const uniqueCategories = [...new Set(assignedCategories)];
+
+                        return (
+                            <TableRow
+                                key={item.id}
+                                onClick={() => { setSelectedItemId(item.id); setIsModalOpen(true); }}
+                                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                            >
+                                <TableCell className="font-medium font-mono text-xs">{item.ticket_number}</TableCell>
+                                <TableCell className="font-medium">{item.customer_name}</TableCell>
+                                <TableCell>{item.product_type_name}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-col gap-1 items-start">
+                                        <div className="flex gap-2">
+                                            <Badge variant={item.status === 'IN_PRODUCTION' ? 'brand' : (item.status === 'IN_QC' ? 'warning' : 'neutral')}>{item.status}</Badge>
+                                            {item.needs_qc_attention && <Badge variant="warning">Check</Badge>}
+                                        </div>
+                                        {uniqueCategories.length > 0 && (
+                                            <div className="flex gap-1 mt-1">
+                                                <Badge variant="neutral">{uniqueCategories[0] as string}</Badge>
+                                                {uniqueCategories.length > 1 && <Badge variant="neutral">+{uniqueCategories.length - 1}</Badge>}
+                                            </div>
+                                        )}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-gray-500">
+                                    {item.assigned_date ? format(new Date(item.assigned_date), 'MMM d') : '-'}
+                                </TableCell>
+                            </TableRow>
+                        )
+                    })}
                     {filteredItems.length === 0 && !loading && (
                         <tr>
                             <td colSpan="6" className="px-6 py-8 text-center text-gray-500 text-sm">

@@ -9,7 +9,7 @@ import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
 import { Modal } from '@/components/UI/Modal';
 import { Input } from '@/components/UI/Input';
 import { CSVImporter } from '@/components/Shared/CSVImporter';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Power, PowerOff } from 'lucide-react';
 import { hasPerm } from '@/lib/permissions';
 
 export default function ManageTaskTypes({ permissions }: { permissions: string[] }) {
@@ -17,7 +17,15 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
     const [tasks, setTasks] = useState([]);
     const [productTypes, setProductTypes] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [taskTypes, setTaskTypes] = useState([]);
     const [rates, setRates] = useState([]);
+
+    const [showNewProductType, setShowNewProductType] = useState(false);
+    const [newProductTypeName, setNewProductTypeName] = useState('');
+    const [showNewCategory, setShowNewCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [showNewTaskType, setShowNewTaskType] = useState(false);
+    const [newTaskTypeName, setNewTaskTypeName] = useState('');
 
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,9 +34,11 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
     const [formData, setFormData] = useState({
         product_type_id: '',
         category_type_id: '',
+        task_type_id: '',
         name: '',
         band_a_fee: '',
-        band_b_fee: ''
+        band_b_fee: '',
+        active: true
     });
 
     useEffect(() => {
@@ -37,40 +47,101 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
 
     const loadData = async () => {
         setLoading(true);
-        const [pt, cat, r] = await Promise.all([
+        const [pt, cat, r, tt] = await Promise.all([
             db.getProductTypes(),
             db.getCategories(),
-            db.getRates()
+            db.getRates(),
+            db.getTaskTypes()
         ]);
 
         setTasks(r);
         setProductTypes(pt);
         setCategories(cat);
         setRates(r);
+        setTaskTypes(tt);
         setLoading(false);
     };
 
     const handleOpenModal = (item = null) => {
+        setShowNewProductType(false);
+        setNewProductTypeName('');
+        setShowNewCategory(false);
+        setNewCategoryName('');
+        setShowNewTaskType(false);
+        setNewTaskTypeName('');
+
         if (item) {
             setEditingItem(item);
             setFormData({
                 product_type_id: item.product_type_id,
                 category_type_id: item.category_type_id,
+                task_type_id: item.task_type_id,
                 name: item.name,
                 band_a_fee: item.band_a_fee,
-                band_b_fee: item.band_b_fee
+                band_b_fee: item.band_b_fee,
+                active: item.active
             });
         } else {
             setEditingItem(null);
             setFormData({
                 product_type_id: productTypes[0]?.id || '',
                 category_type_id: categories[0]?.id || '',
+                task_type_id: taskTypes[0]?.id || '',
                 name: '',
                 band_a_fee: '',
-                band_b_fee: ''
+                band_b_fee: '',
+                active: true
             });
         }
         setIsModalOpen(true);
+    };
+
+    const handleCreateProductType = async () => {
+        if (!newProductTypeName.trim()) return;
+        try {
+            setLoading(true);
+            const newPt = await db.createProductType(newProductTypeName.trim());
+            setProductTypes(prev => [...prev, newPt]);
+            setFormData(prev => ({ ...prev, product_type_id: newPt.id }));
+            setShowNewProductType(false);
+            setNewProductTypeName('');
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        try {
+            setLoading(true);
+            const newCat = await db.createCategory(newCategoryName.trim());
+            setCategories(prev => [...prev, newCat]);
+            setFormData(prev => ({ ...prev, category_type_id: newCat.id }));
+            setShowNewCategory(false);
+            setNewCategoryName('');
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateTaskType = async () => {
+        if (!newTaskTypeName.trim()) return;
+        try {
+            setLoading(true);
+            const newTt = await db.createTaskType(newTaskTypeName.trim());
+            setTaskTypes(prev => [...prev, newTt]);
+            setFormData(prev => ({ ...prev, task_type_id: newTt.id }));
+            setShowNewTaskType(false);
+            setNewTaskTypeName('');
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSave = async (e) => {
@@ -87,19 +158,16 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
             const payload = {
                 product_type_id: formData.product_type_id,
                 category_type_id: formData.category_type_id,
-                name: formData.name.trim(),
+                task_type_id: formData.task_type_id,
                 band_a_fee: Number(formData.band_a_fee),
                 band_b_fee: Number(formData.band_b_fee),
+                active: formData.active
             };
 
-            console.log("Saving Task Type & Rate:", { editingItem, payload });
-
             if (editingItem) {
-                // UPDATE existing
-                await db.updateTaskAndRate(editingItem.task_type_id, payload);
+                await db.updateRateCard(editingItem.id, payload);
             } else {
-                // CREATE new
-                await db.createTaskTypeAndRateByIds(payload);
+                await db.upsertRateCard(payload);
             }
 
             await loadData();
@@ -107,6 +175,22 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
         } catch (err) {
             console.error("Save failed:", err);
             alert(`Save failed: ${err?.message ?? String(err)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (rateCard) => {
+        if (!canManageRates) return;
+        if (!window.confirm(`Are you sure you want to delete the rate card for ${rateCard.name}?`)) return;
+
+        try {
+            setLoading(true);
+            await db.deleteRateCard(rateCard.id);
+            await loadData();
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert(`Cannot delete this rate card. It may be in use by existing work assignments.\n\nDetails: ${err?.message ?? String(err)}`);
         } finally {
             setLoading(false);
         }
@@ -167,13 +251,40 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
                                 </Badge>
                             </TableCell>
                             <TableCell>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
+                                    <button
+                                        onClick={async () => {
+                                            if (!canManageRates) return;
+                                            try {
+                                                setLoading(true);
+                                                await db.toggleRateCardStatus(item.id);
+                                                await loadData();
+                                            } catch (err) {
+                                                alert(`Failed to toggle status: ${err?.message ?? String(err)}`);
+                                                setLoading(false);
+                                            }
+                                        }}
+                                        disabled={!canManageRates}
+                                        className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : item.active ? 'text-gray-400 hover:text-red-500' : 'text-red-400 hover:text-green-500'}`}
+                                        title={item.active ? 'Deactivate Rate' : 'Activate Rate'}
+                                    >
+                                        {item.active ? <PowerOff size={16} /> : <Power size={16} />}
+                                    </button>
                                     <button
                                         onClick={() => handleOpenModal(item)}
                                         disabled={!canManageRates}
                                         className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-maison-primary'}`}
+                                        title="Edit Rate"
                                     >
                                         <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(item)}
+                                        disabled={!canManageRates}
+                                        className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                                        title="Delete Rate"
+                                    >
+                                        <Trash2 size={16} />
                                     </button>
                                 </div>
                             </TableCell>
@@ -190,39 +301,105 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-maison-secondary mb-1.5">Product Type</label>
-                        <select
-                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
-                            value={formData.product_type_id}
-                            onChange={(e) => setFormData({ ...formData, product_type_id: e.target.value })}
-                            disabled={!!editingItem} // Lock context on edit
-                        >
-                            {productTypes.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
+                        {showNewProductType ? (
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newProductTypeName}
+                                        onChange={(e) => setNewProductTypeName(e.target.value)}
+                                        placeholder="Enter new product type"
+                                    />
+                                    <Button type="button" onClick={handleCreateProductType}>Add</Button>
+                                    <Button type="button" variant="ghost" onClick={() => {
+                                        setShowNewProductType(false);
+                                        setFormData({ ...formData, product_type_id: productTypes[0]?.id || '' });
+                                    }}>Cancel</Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <select
+                                className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
+                                value={formData.product_type_id}
+                                onChange={(e) => {
+                                    if (e.target.value === 'NEW') setShowNewProductType(true);
+                                    else setFormData({ ...formData, product_type_id: e.target.value });
+                                }}
+                            >
+                                {productTypes.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                                <option value="NEW">+ Add New Product Type</option>
+                            </select>
+                        )}
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-maison-secondary mb-1.5">Category</label>
-                        <select
-                            className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
-                            value={formData.category_type_id}
-                            onChange={(e) => setFormData({ ...formData, category_type_id: e.target.value })}
-                            disabled={!!editingItem} // Lock context on edit
-                        >
-                            {categories.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
+                        {showNewCategory ? (
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        placeholder="Enter new category"
+                                    />
+                                    <Button type="button" onClick={handleCreateCategory}>Add</Button>
+                                    <Button type="button" variant="ghost" onClick={() => {
+                                        setShowNewCategory(false);
+                                        setFormData({ ...formData, category_type_id: categories[0]?.id || '' });
+                                    }}>Cancel</Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <select
+                                className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
+                                value={formData.category_type_id}
+                                onChange={(e) => {
+                                    if (e.target.value === 'NEW') setShowNewCategory(true);
+                                    else setFormData({ ...formData, category_type_id: e.target.value });
+                                }}
+                            >
+                                {categories.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                                <option value="NEW">+ Add New Category</option>
+                            </select>
+                        )}
                     </div>
 
-                    <Input
-                        label="Task Name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. Sleeve Amendment"
-                        required
-                    />
+                    <div>
+                        <label className="block text-sm font-medium text-maison-secondary mb-1.5">Task Name</label>
+                        {showNewTaskType ? (
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newTaskTypeName}
+                                        onChange={(e) => setNewTaskTypeName(e.target.value)}
+                                        placeholder="Enter new task name"
+                                    />
+                                    <Button type="button" onClick={handleCreateTaskType}>Add</Button>
+                                    <Button type="button" variant="ghost" onClick={() => {
+                                        setShowNewTaskType(false);
+                                        setFormData({ ...formData, task_type_id: taskTypes[0]?.id || '' });
+                                    }}>Cancel</Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <select
+                                className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5"
+                                value={formData.task_type_id}
+                                onChange={(e) => {
+                                    if (e.target.value === 'NEW') setShowNewTaskType(true);
+                                    else setFormData({ ...formData, task_type_id: e.target.value });
+                                }}
+                            >
+                                {taskTypes.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                                <option value="NEW">+ Add New Task</option>
+                            </select>
+                        )}
+                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <Input
@@ -247,6 +424,18 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
                         />
                     </div>
 
+                    <div className="flex items-center gap-2 pt-2">
+                        <label className="text-sm font-medium text-maison-secondary">Status</label>
+                        <select
+                            className="rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2 px-3"
+                            value={formData.active ? 'true' : 'false'}
+                            onChange={(e) => setFormData({ ...formData, active: e.target.value === 'true' })}
+                        >
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+
                     <div className="pt-4 flex justify-end gap-3">
                         <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                             Cancel
@@ -257,6 +446,6 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
                     </div>
                 </form>
             </Modal>
-        </div>
+        </div >
     );
 }
