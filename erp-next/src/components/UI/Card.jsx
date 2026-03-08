@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
-export function Card({ children, className, padding = 'p-6', ...props }) {
+export function Card({ children, className = '', padding = 'p-6', ...props }) {
     return (
         <div
             className={clsx(
