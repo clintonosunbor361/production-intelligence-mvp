@@ -36,11 +36,14 @@ export default function LoginPage() {
         <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-md w-full space-y-8">
                 <div className="text-center">
-                    <h2 className="mt-6 text-3xl font-serif font-bold text-maison-primary">
-                        Maison Couture
+                    <div className="flex justify-center mb-4">
+                        <img src="/logo.png" alt="Deji and Kola Logo" className="h-20 object-contain" />
+                    </div>
+                    <h2 className="text-3xl font-serif font-bold text-maison-primary">
+                        Deji and Kola
                     </h2>
                     <p className="mt-2 text-sm text-maison-secondary">
-                        Sign in to the Production Intelligence ERP
+                        Sign in to the Production Management ERP
                     </p>
                 </div>
 
@@ -58,7 +61,7 @@ export default function LoginPage() {
                                 required
                                 value={email}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                                placeholder="name@maison.com"
+                                placeholder="name@dejiandkola.com"
                             />
                             <Input
                                 label="Password"

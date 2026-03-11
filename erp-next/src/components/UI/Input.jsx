@@ -23,7 +23,7 @@ export const Input = forwardRef(({ label, labelRight, error, className, type = '
                     ref={ref}
                     type={inputType}
                     className={clsx(
-                        "block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5",
+                        "block w-full rounded-lg border-gray-200 shadow-sm focus:border-maison-accent focus:ring-maison-accent sm:text-sm py-2.5 pl-4",
                         error && "border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500",
                         isPassword && "pr-10",
                         className

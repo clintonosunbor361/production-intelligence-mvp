@@ -9,7 +9,7 @@ import { Table, TableRow, TableCell, Badge } from '@/components/UI/Table';
 import { Modal } from '@/components/UI/Modal';
 import { Input } from '@/components/UI/Input';
 import { CSVImporter } from '@/components/Shared/CSVImporter';
-import { Plus, Edit2, Power, PowerOff } from 'lucide-react';
+import { Plus, Edit2, Power, PowerOff, Trash2 } from 'lucide-react';
 
 const DEPARTMENTS = ['PANT', 'SHIRT', 'SUIT', 'KAFTAN', 'ACCESSORIES', 'DESIGN', 'CUTTER', 'OTHER'];
 
@@ -88,6 +88,24 @@ export default function ManageTailors({ canManageTailors }: { canManageTailors: 
         }
     };
 
+    const handleDeleteTailor = async (tailor) => {
+        if (!canManageTailors) {
+            alert("Master Data writes are read-only for your role.");
+            return;
+        }
+
+        if (window.confirm(`Are you sure you want to delete ${tailor.name}?`)) {
+            try {
+                await db.deleteTailor(tailor.id)
+
+                setTailors(prev => prev.filter(t => t.id !== tailor.id))
+
+            } catch (err) {
+                alert(err.message)
+            }
+        }
+    };
+
     const handleImportCSV = async (data) => {
         if (!canManageTailors) {
             alert("Master Data writes are read-only for your role.");
@@ -161,6 +179,14 @@ export default function ManageTailors({ canManageTailors }: { canManageTailors: 
                                             className={`p-1 transition-colors ${!canManageTailors ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-maison-primary'}`}
                                         >
                                             <Edit2 size={16} />
+                                        </button>
+                                        <button
+                                            title="Delete Tailor"
+                                            onClick={() => handleDeleteTailor(tailor)}
+                                            disabled={!canManageTailors}
+                                            className={`p-1 transition-colors ${!canManageTailors ? 'text-gray-300 cursor-not-allowed' : 'text-red-400 hover:text-red-600'}`}
+                                        >
+                                            <Trash2 size={16} />
                                         </button>
                                     </div>
                                 </TableCell>

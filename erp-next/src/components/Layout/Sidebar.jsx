@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { db } from '@/services/db';
 import clsx from 'clsx';
-import { RoleSwitcher } from './RoleSwitcher';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -59,12 +58,11 @@ export function Sidebar({ isOpen, onClose }) {
                 {/* Brand */}
                 <div className="flex items-center justify-between px-6 h-20">
                     <div className="flex items-center gap-3">
-                        <div className="bg-maison-primary text-white p-2 rounded-md">
-                            <Shirt size={20} strokeWidth={1.5} />
+                        <div className="w-10 h-10 rounded-md overflow-hidden flex items-center justify-center shrink-0">
+                            <img src="/logo.png" alt="Deji and Kola" className="w-full h-full object-contain" />
                         </div>
                         <div>
-                            <h1 className="font-serif text-lg font-medium leading-none">Maison</h1>
-                            <p className="text-xs text-maison-secondary tracking-widest uppercase mt-1">Couture ERP</p>
+                            <h1 className="font-serif text-lg font-medium leading-none">Deji and Kola</h1>
                         </div>
                     </div>
                     {/* Close Button (Mobile Only) */}
@@ -115,7 +113,6 @@ export function Sidebar({ isOpen, onClose }) {
 
                 {/* Bottom Actions */}
                 <div className="p-4 border-t border-gray-100 space-y-2">
-                    <RoleSwitcher />
                     <div className="flex items-center text-xs font-medium text-maison-secondary px-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>
                         System Operational

@@ -6,7 +6,7 @@ import { Providers } from './Providers'
 
 export const metadata: Metadata = {
   title: 'Maison Couture ERP',
-  description: 'Production Intelligence MVP',
+  description: 'Production Management MVP',
 }
 
 export default function RootLayout({

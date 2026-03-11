@@ -2,6 +2,10 @@ import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
 
+let contextCache = null
+let contextCacheTime = 0
+const CONTEXT_TTL_MS = 60 * 1000
+
 export class NotAuthenticatedError extends Error {
     constructor(message = "User not authenticated") {
         super(message)
@@ -31,16 +35,24 @@ export class PermissionDeniedError extends Error {
 }
 
 async function getContext() {
-    const { data: userData } = await supabase.auth.getUser()
+    const now = Date.now()
 
-    if (!userData?.user) {
+    if (contextCache && (now - contextCacheTime) < CONTEXT_TTL_MS) {
+        return contextCache
+    }
+
+    const { data: userData, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !userData?.user) {
         throw new NotAuthenticatedError()
     }
+
+    const userId = userData.user.id
 
     const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id')
-        .eq('user_id', userData.user.id)
+        .eq('user_id', userId)
         .limit(1)
         .maybeSingle()
 
@@ -50,41 +62,70 @@ async function getContext() {
 
     const orgId = profile.organization_id
 
-    // Fetch role
     const { data: userRole, error: roleError } = await supabase
         .from('user_roles')
-        .select('roles(name, id)')
-        .eq('user_id', userData.user.id)
+        .select('role_id')
+        .eq('user_id', userId)
         .eq('organization_id', orgId)
         .limit(1)
         .maybeSingle()
 
-    if (roleError || !userRole || !userRole.roles) {
+    if (roleError || !userRole?.role_id) {
         throw new MissingRoleError(roleError?.message || "User role not found.")
     }
 
-    const roleId = Array.isArray(userRole.roles) ? userRole.roles[0]?.id : userRole.roles.id
-    const roleName = Array.isArray(userRole.roles) ? userRole.roles[0]?.name : userRole.roles.name
+    const roleId = userRole.role_id
 
-    // Fetch permissions
-    const { data: rolePermissions, error: permError } = await supabase
+    const { data: roleRow, error: roleNameError } = await supabase
+        .from('roles')
+        .select('name')
+        .eq('id', roleId)
+        .limit(1)
+        .maybeSingle()
+
+    if (roleNameError || !roleRow) {
+        throw new MissingRoleError(roleNameError?.message || "Role record not found.")
+    }
+
+    const { data: rolePermissions, error: permLinkError } = await supabase
         .from('role_permissions')
-        .select('permissions(name)')
+        .select('permission_id')
         .eq('role_id', roleId)
 
-    if (permError) {
-        throw new Error(permError.message)
+    if (permLinkError) {
+        throw new Error(permLinkError.message)
     }
 
-    // Role Permissions could also be structured differently depending on the Postgres result, usually it's array of objects
-    const permissions = rolePermissions?.map(rp => Array.isArray(rp.permissions) ? rp.permissions[0]?.name : rp.permissions?.name) || []
+    const permissionIds = (rolePermissions || [])
+        .map(row => row.permission_id)
+        .filter(Boolean)
 
-    return {
-        userId: userData.user.id,
+    let permissions = []
+
+    if (permissionIds.length > 0) {
+        const { data: permissionRows, error: permError } = await supabase
+            .from('permissions')
+            .select('name')
+            .in('id', permissionIds)
+
+        if (permError) {
+            throw new Error(permError.message)
+        }
+
+        permissions = (permissionRows || []).map(row => row.name).filter(Boolean)
+    }
+
+    const ctx = {
+        userId,
         organizationId: orgId,
-        roleName: roleName,
-        permissions: permissions.filter(Boolean)
+        roleName: roleRow.name,
+        permissions
     }
+
+    contextCache = ctx
+    contextCacheTime = now
+
+    return ctx
 }
 
 function requireOrg(ctx) {
@@ -136,6 +177,9 @@ export const db = {
 
     async signOut() {
         const { error } = await supabase.auth.signOut()
+
+        contextCache = null
+
         if (error) {
             console.error(error)
             throw new Error(error.message)
@@ -235,7 +279,7 @@ export const db = {
             throw new Error(error.message)
         }
 
-        return data
+        return data || []
     },
 
     async getTailorSpecialPay(tailorId) {
@@ -544,6 +588,44 @@ export const db = {
         }
 
         return data.active
+    },
+
+    async deleteTailor(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_tailors')
+
+        const { count, error: countError } = await supabase
+            .from('work_assignments')
+            .select('*', { count: 'exact', head: true })
+            .eq('tailor_id', id)
+            .eq('organization_id', ctx.organizationId)
+
+        if (countError) {
+            console.error(countError)
+            throw new Error(countError.message)
+        }
+
+        if (count > 0) {
+            throw new Error("Cannot delete tailor because they have existing work assignments.")
+        }
+
+        const { data, error } = await supabase
+            .from('tailors')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select('id')
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        if (!data || data.length === 0) {
+            throw new Error("Delete failed. Record was not removed. Check RLS delete policy for tailors.")
+        }
+
+        return true
     },
 
     async saveTailorSpecialPay(tailor_id, task_type_id, uplift_pct) {
