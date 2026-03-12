@@ -259,7 +259,6 @@ export default function Dashboard() {
                     </Button>
                 </Card>
             </div>
-
             {/* Weekly Payroll Summary (MVP) */}
             <Card>
                 <div className="flex justify-between items-center mb-4">
@@ -277,12 +276,14 @@ export default function Dashboard() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {weeklyPayroll.map(p => (
-                                <tr key={p.tailor_id} className="hover:bg-gray-50/50">
+                            {weeklyPayroll.map((p, index) => (
+                                <tr key={`${p.tailor_id}-${index}`} className="hover:bg-gray-50/50">
                                     <td className="px-4 py-3 font-medium text-gray-900">{p.tailor_name}</td>
                                     <td className="px-4 py-3 text-gray-500">{p.department}</td>
                                     <td className="px-4 py-3 text-center">{p.task_count}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-maison-primary">₦{p.weekly_total_pay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-maison-primary">
+                                        ₦{Number(p.weekly_total_pay || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
                                 </tr>
                             ))}
                             {weeklyPayroll.length === 0 && (

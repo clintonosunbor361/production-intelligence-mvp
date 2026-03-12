@@ -54,7 +54,7 @@ DECLARE
   v_assignment_id uuid;
   v_item_status item_status;
 BEGIN
-  IF NOT public.has_permission('manage_work_assignments') THEN
+  IF NOT public.has_permission('manage_production') THEN
     RAISE EXCEPTION 'Permission denied';
   END IF;
 
@@ -86,12 +86,14 @@ BEGIN
     FROM public.rate_cards
     WHERE organization_id = v_org_id
       AND task_type_id = p_task_type_id
+      AND category_type_id = p_category_type_id
       AND product_type_id = v_product_type_id;
   ELSE
     SELECT band_b_fee INTO v_rate
     FROM public.rate_cards
     WHERE organization_id = v_org_id
       AND task_type_id = p_task_type_id
+      AND category_type_id = p_category_type_id
       AND product_type_id = v_product_type_id;
   END IF;
 
@@ -126,6 +128,97 @@ BEGIN
   RETURNING id INTO v_assignment_id;
 
   RETURN v_assignment_id;
+END;
+$$;
+
+-- 1b) Update Work Assignment (computes new snapshots, preserves status/item)
+CREATE OR REPLACE FUNCTION public.update_work_assignment(
+  p_assignment_id uuid,
+  p_category_type_id uuid,
+  p_task_type_id uuid,
+  p_tailor_id uuid
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid := public.current_org_id();
+  v_product_type_id uuid;
+  v_band tailor_band;
+  v_rate numeric(12,2);
+  v_status work_assignment_status;
+  v_item_id uuid;
+BEGIN
+  IF NOT public.has_permission('manage_production') THEN
+    RAISE EXCEPTION 'Permission denied';
+  END IF;
+
+  -- 1. Fetch current assignment & verify status
+  SELECT item_id, status
+  INTO v_item_id, v_status
+  FROM public.work_assignments
+  WHERE id = p_assignment_id AND organization_id = v_org_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Work assignment not found';
+  END IF;
+
+  IF v_status <> 'CREATED' THEN
+    RAISE EXCEPTION 'Cannot update work assignment unless status is CREATED. Current status: %', v_status;
+  END IF;
+
+  -- 2. Fetch parent item's product_type
+  SELECT product_type_id
+  INTO v_product_type_id
+  FROM public.items
+  WHERE id = v_item_id AND organization_id = v_org_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Parent item not found';
+  END IF;
+
+  -- 3. Fetch tailor band
+  SELECT band
+  INTO v_band
+  FROM public.tailors
+  WHERE id = p_tailor_id AND organization_id = v_org_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Tailor not found';
+  END IF;
+
+  -- 4. Fetch rate based on new task and tailor band
+  IF v_band = 'A' THEN
+    SELECT band_a_fee INTO v_rate
+    FROM public.rate_cards
+    WHERE organization_id = v_org_id
+      AND task_type_id = p_task_type_id
+      AND category_type_id = p_category_type_id
+      AND product_type_id = v_product_type_id;
+  ELSE
+    SELECT band_b_fee INTO v_rate
+    FROM public.rate_cards
+    WHERE organization_id = v_org_id
+      AND task_type_id = p_task_type_id
+      AND category_type_id = p_category_type_id
+      AND product_type_id = v_product_type_id;
+  END IF;
+
+  IF v_rate IS NULL THEN
+    RAISE EXCEPTION 'Rate card not found for this task and product';
+  END IF;
+
+  -- 5. Perform the precise update
+  UPDATE public.work_assignments SET
+    category_type_id = p_category_type_id,
+    task_type_id = p_task_type_id,
+    tailor_id = p_tailor_id,
+    pay_band_snapshot = v_band,
+    rate_snapshot = v_rate,
+    pay_amount = v_rate
+  WHERE id = p_assignment_id AND organization_id = v_org_id;
+
 END;
 $$;
 

@@ -196,6 +196,54 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
         }
     };
 
+    const handleDeleteProductType = async (pt) => {
+        if (!canManageRates) return;
+        if (!window.confirm(`Are you sure you want to delete product type "${pt.name}"?`)) return;
+
+        try {
+            setLoading(true);
+            await db.deleteProductType(pt.id);
+            await loadData();
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert(`Delete failed: ${err?.message ?? String(err)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteCategory = async (cat) => {
+        if (!canManageRates) return;
+        if (!window.confirm(`Are you sure you want to delete category "${cat.name}"?`)) return;
+
+        try {
+            setLoading(true);
+            await db.deleteCategory(cat.id);
+            await loadData();
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert(`Delete failed: ${err?.message ?? String(err)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteTaskType = async (tt) => {
+        if (!canManageRates) return;
+        if (!window.confirm(`Are you sure you want to delete task type "${tt.name}"?`)) return;
+
+        try {
+            setLoading(true);
+            await db.deleteTaskType(tt.id);
+            await loadData();
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert(`Delete failed: ${err?.message ?? String(err)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -292,6 +340,63 @@ export default function ManageTaskTypes({ permissions }: { permissions: string[]
                     ))}
                 </Table>
             </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card padding="p-4">
+                    <h3 className="text-lg font-medium text-maison-primary mb-4">Product Types</h3>
+                    <div className="flex flex-col gap-2">
+                        {productTypes.map(pt => (
+                            <div key={pt.id} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-md border border-gray-100">
+                                <span className="text-sm">{pt.name}</span>
+                                <button
+                                    onClick={() => handleDeleteProductType(pt)}
+                                    disabled={!canManageRates}
+                                    className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                                    title="Delete Product Type"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+                <Card padding="p-4">
+                    <h3 className="text-lg font-medium text-maison-primary mb-4">Categories</h3>
+                    <div className="flex flex-col gap-2">
+                        {categories.map(cat => (
+                            <div key={cat.id} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-md border border-gray-100">
+                                <span className="text-sm">{cat.name}</span>
+                                <button
+                                    onClick={() => handleDeleteCategory(cat)}
+                                    disabled={!canManageRates}
+                                    className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                                    title="Delete Category"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+                <Card padding="p-4">
+                    <h3 className="text-lg font-medium text-maison-primary mb-4">Task Types</h3>
+                    <div className="flex flex-col gap-2">
+                        {taskTypes.map(tt => (
+                            <div key={tt.id} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-md border border-gray-100">
+                                <span className="text-sm">{tt.name}</span>
+                                <button
+                                    onClick={() => handleDeleteTaskType(tt)}
+                                    disabled={!canManageRates}
+                                    className={`p-1 transition-colors ${!canManageRates ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                                    title="Delete Task Type"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            </div>
 
             <Modal
                 isOpen={isModalOpen}

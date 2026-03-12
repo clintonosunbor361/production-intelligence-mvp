@@ -461,6 +461,18 @@ export const db = {
         const ctx = await getContext()
         requirePermission(ctx, 'manage_rates')
 
+        // Check references
+        const [rateCardsRes, itemsRes] = await Promise.all([
+            supabase.from('rate_cards').select('*', { count: 'exact', head: true }).eq('organization_id', ctx.organizationId).eq('product_type_id', id),
+            supabase.from('items').select('*', { count: 'exact', head: true }).eq('organization_id', ctx.organizationId).eq('product_type_id', id)
+        ])
+
+        if (rateCardsRes.error) throw new Error(rateCardsRes.error.message)
+        if (itemsRes.error) throw new Error(itemsRes.error.message)
+        if (rateCardsRes.count > 0 || itemsRes.count > 0) {
+            throw new Error("Cannot delete product type because it is used in items or rate cards.")
+        }
+
         const { error } = await supabase
             .from('product_types')
             .delete()
@@ -500,18 +512,94 @@ export const db = {
         const ctx = await getContext()
         requirePermission(ctx, 'manage_rates')
 
-        const { error } = await supabase
+        const [rateCardsRes, assignmentsRes] = await Promise.all([
+            supabase
+                .from('rate_cards')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', ctx.organizationId)
+                .eq('category_type_id', id),
+            supabase
+                .from('work_assignments')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', ctx.organizationId)
+                .eq('category_type_id', id)
+        ])
+
+        if (rateCardsRes.error) throw new Error(rateCardsRes.error.message)
+        if (assignmentsRes.error) throw new Error(assignmentsRes.error.message)
+
+        if ((rateCardsRes.count || 0) > 0 || (assignmentsRes.count || 0) > 0) {
+            throw new Error("Cannot delete category because it is used in work assignments or rate cards.")
+        }
+
+        const { data, error } = await supabase
             .from('category_types')
             .delete()
             .eq('id', id)
             .eq('organization_id', ctx.organizationId)
+            .select('id')
 
         if (error) {
             console.error(error)
             throw new Error(error.message)
         }
+
+        if (!data || data.length === 0) {
+            throw new Error("Delete failed. No category was removed.")
+        }
+
         return true
     },
+
+    async deleteTaskType(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_rates')
+
+        const [rateCardsRes, assignmentsRes, specialPayRes] = await Promise.all([
+            supabase
+                .from('rate_cards')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', ctx.organizationId)
+                .eq('task_type_id', id),
+            supabase
+                .from('work_assignments')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', ctx.organizationId)
+                .eq('task_type_id', id),
+            supabase
+                .from('tailor_special_pay')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', ctx.organizationId)
+                .eq('task_type_id', id)
+        ])
+
+        if (rateCardsRes.error) throw new Error(rateCardsRes.error.message)
+        if (assignmentsRes.error) throw new Error(assignmentsRes.error.message)
+        if (specialPayRes.error) throw new Error(specialPayRes.error.message)
+
+        if ((rateCardsRes.count || 0) > 0 || (assignmentsRes.count || 0) > 0 || (specialPayRes.count || 0) > 0) {
+            throw new Error("Cannot delete task type because it is used in work assignments, tailor special pay, or rate cards.")
+        }
+
+        const { data, error } = await supabase
+            .from('task_types')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .select('id')
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
+
+        if (!data || data.length === 0) {
+            throw new Error("Delete failed. No task type was removed.")
+        }
+
+        return true
+    },
+
     async createTailor(tailorData) {
 
         const ctx = await getContext()
@@ -959,15 +1047,59 @@ export const db = {
         const ctx = await getContext()
         requirePermission(ctx, 'manage_production')
 
-        const { error } = await supabase
+        // 1. Find the item first so we know its ticket_id
+        const { data: item, error: fetchError } = await supabase
+            .from('items')
+            .select('id, ticket_id')
+            .eq('id', itemId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle()
+
+        if (fetchError) {
+            console.error(fetchError)
+            throw new Error(fetchError.message)
+        }
+
+        if (!item) {
+            throw new Error("Item not found.")
+        }
+
+        // 2. Delete the item
+        const { error: deleteError } = await supabase
             .from('items')
             .delete()
             .eq('id', itemId)
             .eq('organization_id', ctx.organizationId)
 
-        if (error) {
-            console.error(error)
-            throw new Error(error.message)
+        if (deleteError) {
+            console.error(deleteError)
+            throw new Error(deleteError.message)
+        }
+
+        // 3. Check if the ticket still has any remaining items
+        const { count, error: countError } = await supabase
+            .from('items')
+            .select('*', { count: 'exact', head: true })
+            .eq('ticket_id', item.ticket_id)
+            .eq('organization_id', ctx.organizationId)
+
+        if (countError) {
+            console.error(countError)
+            throw new Error(countError.message)
+        }
+
+        // 4. If no items remain, delete the parent ticket too
+        if ((count || 0) === 0) {
+            const { error: ticketDeleteError } = await supabase
+                .from('tickets')
+                .delete()
+                .eq('id', item.ticket_id)
+                .eq('organization_id', ctx.organizationId)
+
+            if (ticketDeleteError) {
+                console.error(ticketDeleteError)
+                throw new Error(ticketDeleteError.message)
+            }
         }
 
         return true
@@ -996,27 +1128,27 @@ export const db = {
         let query = supabase
             .from('work_assignments')
             .select(`
+            id,
+            pay_amount,
+            status,
+            created_at,
+            updated_at,
+            tailor_id,
+            tailors (
                 id,
-                pay_amount,
-                status,
-                created_at,
-                updated_at,
-                tailor_id,
-                tailors (
-                    id,
-                    name,
-                    band,
-                    department
-                )
-            `)
+                name,
+                band,
+                department
+            )
+        `)
             .eq('organization_id', ctx.organizationId)
-            .eq('status', 'PAID')
+            .eq('status', 'QC_PASSED')
 
         if (startDate) {
-            query = query.gte('updated_at', startDate)
+            query = query.gte('updated_at', `${startDate}T00:00:00`)
         }
         if (endDate) {
-            query = query.lte('updated_at', endDate)
+            query = query.lte('updated_at', `${endDate}T23:59:59`)
         }
 
         const { data, error } = await query
@@ -1025,8 +1157,6 @@ export const db = {
             console.error(error)
             throw new Error(error.message)
         }
-
-        console.log("DEBUG: Raw PAID work_assignments for payroll:", data)
 
         const payrollMap = {}
 
@@ -1038,7 +1168,7 @@ export const db = {
                 payrollMap[tailorId] = {
                     tailor_id: tailorId,
                     tailor_name: tailor?.name || 'Unknown',
-                    department: tailor?.department || 'Production', // Using actual tailor department
+                    department: tailor?.department || 'Production',
                     weekly_verified_total: 0,
                     weekly_total_pay: 0,
                     task_count: 0
@@ -1053,7 +1183,6 @@ export const db = {
         }
 
         const finalPayroll = Object.values(payrollMap)
-        console.log("DEBUG: Final aggregated payroll array:", finalPayroll)
         return finalPayroll
     },
 
@@ -1061,11 +1190,11 @@ export const db = {
         const ctx = await getContext()
         requirePermission(ctx, 'manage_production')
 
-        const { data, error } = await supabase.rpc('create_work_assignment', {
-            p_item_id: payload.item_id,
+        const { data, error } = await supabase.rpc('update_work_assignment', {
+            p_assignment_id: id,
             p_category_type_id: payload.category_type_id,
             p_task_type_id: payload.task_type_id,
-            p_tailor_id: payload.tailor_id
+            p_tailor_id: payload.tailor_id,
         })
 
         if (error) {
@@ -1075,6 +1204,111 @@ export const db = {
 
         // Update item status to IN_QC when a task is assigned
         await this.updateItemStatus(payload.item_id, 'IN_QC');
+
+        return data
+    },
+
+    async deleteWorkAssignment(id) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
+
+        // 1. Fetch assignment and confirm it exists, same org, status = 'CREATED'
+        const { data: assignment, error: fetchErr } = await supabase
+            .from('work_assignments')
+            .select('item_id, status')
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .single()
+
+        if (fetchErr) {
+            if (fetchErr.code === 'PGRST116') throw new Error("Work assignment not found.")
+            throw new Error(fetchErr.message)
+        }
+
+        if (assignment.status === 'QC_PASSED' || assignment.status === 'PAID' || assignment.status === 'REVERSED') {
+            throw new Error("Cannot delete this task because it has already progressed beyond assignment.")
+        }
+
+        if (assignment.status !== 'CREATED') {
+            throw new Error(`Cannot delete this task. Current status: ${assignment.status}`)
+        }
+
+        const itemId = assignment.item_id
+
+        // 2. Delete the assignment
+        const { error: deleteErr } = await supabase
+            .from('work_assignments')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+
+        if (deleteErr) {
+            console.error(deleteErr)
+            throw new Error(deleteErr.message)
+        }
+
+        // 3. Check remaining assignments for the same item
+        const { count, error: countErr } = await supabase
+            .from('work_assignments')
+            .select('*', { count: 'exact', head: true })
+            .eq('item_id', itemId)
+            .eq('organization_id', ctx.organizationId)
+
+        if (countErr) throw new Error(countErr.message)
+
+        // 4. If no assignments remain, revert item status to IN_PRODUCTION
+        if (count === 0) {
+            await this.updateItemStatus(itemId, 'IN_PRODUCTION')
+        }
+
+        return true
+    },
+
+    async updateWorkAssignment(id, payload) {
+        const ctx = await getContext()
+        requirePermission(ctx, 'manage_production')
+
+        // 1. Fetch assignment and confirm it exists, same org
+        const { data: assignment, error: fetchErr } = await supabase
+            .from('work_assignments')
+            .select('item_id, status')
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .single()
+
+        if (fetchErr) {
+            if (fetchErr.code === 'PGRST116') throw new Error("Work assignment not found.")
+            throw new Error(fetchErr.message)
+        }
+
+        // 2. Editing Rules
+        if (assignment.status === 'QC_PASSED' || assignment.status === 'PAID' || assignment.status === 'REVERSED') {
+            throw new Error("Cannot edit this task because it has already progressed beyond assignment.")
+        }
+
+        if (assignment.status !== 'CREATED') {
+            throw new Error(`Cannot edit this task. Current status: ${assignment.status}`)
+        }
+
+        // 3. Extract ONLY permitted fields
+        const allowedPayload = {
+            p_assignment_id: id,
+            p_category_type_id: payload.category_type_id,
+            p_task_type_id: payload.task_type_id,
+            p_tailor_id: payload.tailor_id
+        }
+
+        if (!allowedPayload.p_category_type_id || !allowedPayload.p_task_type_id || !allowedPayload.p_tailor_id) {
+            throw new Error("Missing required editable fields: category, task, or tailor.")
+        }
+
+        // 4. Update via RPC to reuse identical pricing snapshot logic
+        const { data, error } = await supabase.rpc('update_work_assignment', allowedPayload)
+
+        if (error) {
+            console.error(error)
+            throw new Error(error.message)
+        }
 
         return data
     },

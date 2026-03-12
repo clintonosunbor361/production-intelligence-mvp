@@ -345,7 +345,10 @@ BEGIN
     IF NEW.pay_band_snapshot IS DISTINCT FROM OLD.pay_band_snapshot
        OR NEW.rate_snapshot IS DISTINCT FROM OLD.rate_snapshot
        OR NEW.pay_amount IS DISTINCT FROM OLD.pay_amount THEN
-      RAISE EXCEPTION 'Snapshot fields are immutable on work_assignments';
+       
+       IF OLD.status <> 'CREATED' THEN
+         RAISE EXCEPTION 'Snapshot fields are immutable on work_assignments unless status is CREATED';
+       END IF;
     END IF;
   END IF;
 
